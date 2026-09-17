@@ -1,0 +1,22 @@
+{
+  "name": "realms-of-fortune",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Realms of Fortune — a single-player fantasy board game inspired by Monopoly. Headless rules engine.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim": "tsx src/sim.ts",
+    "typecheck": "tsc --noEmit",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  }
+}

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Realms of Fortune — Secondary Screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Alegreya:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --gold:#e8c96a; --gold-deep:#b08d2e;
+    --panel:#1d2331; --panel-hi:#2a3247;
+    --text:#d8cfb4; --text-dim:#9a917c;
+    --r-shire:#a8b23f; --r-silver:#5fa7c9; --r-wild:#3f8f5a; --r-iron:#8f6a45;
+    --r-sun:#e09a3f; --r-mage:#8f6fd0; --r-dragon:#d04038; --r-celest:#5a7fe0; --way:#3fd0c9;
+    --p-you:#4f8ef0; --p-borin:#e0a832; --p-vex:#b05fd0; --p-karg:#e05038;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#0d1017;
+    background-image:
+      radial-gradient(ellipse at 50% -10%, #1e2740 0%, transparent 55%),
+      radial-gradient(ellipse at 90% 100%, #17223a 0%, transparent 45%);
+    color:var(--text);font-family:'Alegreya',serif;padding:26px 14px 60px;
+  }
+  .page{max-width:1150px;margin:0 auto}
+  .page-header{text-align:center;margin-bottom:26px}
+  .page-header h1{font-family:'Cinzel',serif;font-weight:900;font-size:32px;letter-spacing:5px;color:var(--gold);
+    text-shadow:0 0 24px rgba(232,201,106,.35), 0 2px 4px #000}
+  .page-header p{font-style:italic;color:var(--text-dim);margin-top:4px}
+
+  .screen-title{
+    font-family:'Cinzel',serif;font-size:15px;letter-spacing:3px;color:var(--gold);
+    margin:42px 0 14px;text-align:center;text-shadow:0 0 12px rgba(232,201,106,.25)
+  }
+  .screen-title small{display:block;font-family:'Alegreya',serif;font-weight:400;font-style:italic;
+    letter-spacing:0;font-size:12.5px;color:var(--text-dim);margin-top:4px;text-transform:none}
+
+  .frame{
+    background:linear-gradient(#252c3d,#141824);
+    border:1px solid #06070b;
+    box-shadow:inset 0 0 0 2px var(--gold-deep), inset 0 0 0 4px #06070b, inset 0 0 0 5px #55462055,
+      0 14px 50px rgba(0,0,0,.8);
+  }
+  .stage{padding:26px;display:flex;justify-content:center;align-items:center;gap:22px;flex-wrap:wrap;
+    background-image:radial-gradient(ellipse at 50% 0%, rgba(42,50,71,.6), transparent 70%)}
+
+  h2.dialog-h{font-family:'Cinzel',serif;font-weight:900;font-size:20px;letter-spacing:2px;color:var(--gold);text-align:center}
+  .dialog-sub{text-align:center;font-style:italic;color:var(--text-dim);font-size:12.5px;margin-top:3px}
+
+  .btn{
+    font-family:'Cinzel',serif;font-weight:700;letter-spacing:1px;font-size:13px;
+    padding:10px 18px;border-radius:5px;cursor:pointer;border:1px solid #06070b;
+    background:linear-gradient(#f0d47e,#c49a2e 45%,#a37c1e);color:#2a1d05;
+    box-shadow:inset 0 1px 0 #fff8, 0 0 14px rgba(232,201,106,.22), 0 3px 0 #5c4610;
+    transition:transform .06s;
+  }
+  .btn:active{transform:translateY(2px);box-shadow:inset 0 1px 0 #fff8,0 1px 0 #5c4610}
+  .btn.secondary{background:linear-gradient(#a98fe0,#7350b8 45%,#5a3a9a);color:#f2eafc;
+    box-shadow:inset 0 1px 0 #fff5, 0 0 16px rgba(143,111,208,.45), 0 3px 0 #35215e}
+  .btn.ghost{background:linear-gradient(#3a4257,#252c3d);color:var(--text);
+    box-shadow:inset 0 1px 0 #ffffff22, 0 3px 0 #0a0c12}
+  .btn.danger{background:linear-gradient(#e07a62,#b03a2e 45%,#8a2a20);color:#fdeae6;
+    box-shadow:inset 0 1px 0 #fff5, 0 0 14px rgba(224,80,56,.35), 0 3px 0 #5c150e}
+  .btn small{display:block;font-family:'Alegreya',serif;font-weight:400;letter-spacing:0;font-size:10.5px;font-style:italic}
+  .btn:disabled{filter:grayscale(.8) brightness(.6);cursor:not-allowed}
+
+  .portrait{
+    width:44px;height:44px;border-radius:50%;flex:none;
+    background:radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--pc) 60%, #fff) 0%, var(--pc) 45%, color-mix(in srgb, var(--pc) 55%, #000) 100%);
+    color:#fdf6e3;font-family:'Cinzel',serif;font-weight:900;font-size:18px;
+    display:flex;align-items:center;justify-content:center;
+    border:2px solid var(--gold-deep);
+    box-shadow:0 0 10px color-mix(in srgb, var(--pc) 55%, transparent), 0 2px 5px #000;
+  }
+  .ic{width:16px;height:16px;fill:var(--gold)}
+
+  .goldline{font-family:'Cinzel',serif;font-size:12px;letter-spacing:1px;color:var(--gold);text-align:center}
+
+  /* ===== 1. CLASS SELECT ===== */
+  .setup{width:100%;max-width:1020px}
+  .class-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}
+  @media(max-width:900px){.class-cards{grid-template-columns:repeat(2,1fr)}}
+  .ccard{
+    background:linear-gradient(#10141f,#0a0d15);border:1px solid #3a4257;border-radius:6px;
+    padding:12px 11px;display:flex;flex-direction:column;gap:7px;cursor:pointer;position:relative;
+    transition:border-color .15s;
+  }
+  .ccard:hover{border-color:var(--gold-deep)}
+  .ccard.sel{border-color:var(--gold);box-shadow:0 0 18px rgba(232,201,106,.28), inset 0 0 24px rgba(232,201,106,.05)}
+  .ccard.sel::after{
+    content:"CHOSEN";position:absolute;top:-9px;left:50%;transform:translateX(-50%);
+    font-family:'Cinzel',serif;font-size:9px;font-weight:900;letter-spacing:2px;color:#2a1d05;
+    background:linear-gradient(#f0d47e,#c49a2e);padding:2px 10px;border-radius:8px;border:1px solid #06070b;
+  }
+  .ccard .top{display:flex;align-items:center;gap:9px}
+  .ccard .cname{font-family:'Cinzel',serif;font-weight:900;font-size:13.5px;color:#efe6cb;letter-spacing:.5px}
+  .ccard .trait{font-size:11.5px;line-height:1.35;color:#b5ab8f}
+  .ccard .trait b{color:var(--gold);font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;display:block;margin-bottom:1px}
+  .ccard .cd{font-size:10px;color:var(--text-dim);font-style:italic}
+  .setup-foot{display:flex;gap:26px;justify-content:center;align-items:center;flex-wrap:wrap;border-top:1px solid #55462055;padding-top:16px}
+  .foot-group{display:flex;flex-direction:column;align-items:center;gap:7px}
+  .foot-label{font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;color:var(--text-dim)}
+  .opp-row{display:flex;gap:8px;align-items:center}
+  .opp-row .portrait{width:38px;height:38px;font-size:15px}
+  .opp-add{width:38px;height:38px;border-radius:50%;border:2px dashed #3a4257;color:#3a4257;
+    display:flex;align-items:center;justify-content:center;font-size:18px}
+  .diff{display:flex;gap:6px}
+  .diff span{font-family:'Cinzel',serif;font-size:11px;letter-spacing:1px;padding:6px 13px;border-radius:16px;
+    border:1px solid #3a4257;color:var(--text-dim);cursor:pointer}
+  .diff span.on{border-color:var(--gold);color:var(--gold);background:rgba(232,201,106,.08);
+    box-shadow:0 0 10px rgba(232,201,106,.15)}
+
+  /* ===== dialogs (shared) ===== */
+  .dialog{
+    background:linear-gradient(#1a2030,#10141f);border:1px solid var(--gold-deep);border-radius:6px;
+    box-shadow:0 0 0 1px #06070b, 0 0 40px rgba(0,0,0,.8), inset 0 0 40px rgba(143,106,69,.06);
+    padding:20px 22px;
+  }
+  .dialog .foot{display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap}
+
+  /* ===== 2. BUILD ===== */
+  .build{width:100%;max-width:880px}
+  .slots-row{display:flex;gap:10px;justify-content:center;margin:14px 0 4px}
+  .slot{width:52px;height:52px;border:1px solid var(--gold-deep);border-radius:6px;
+    display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 35%, #2a3247, #141824);box-shadow:inset 0 0 8px #000}
+  .slot .ic{width:26px;height:26px}
+  .slot.empty{border-style:dashed;border-color:#c49a2e;box-shadow:0 0 14px rgba(232,201,106,.25);background:transparent;
+    color:var(--gold);font-size:22px}
+  .paths{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+  @media(max-width:760px){.paths{grid-template-columns:1fr}}
+  .path{background:#0d1119;border:1px solid #3a4257;border-radius:6px;padding:11px}
+  .path h5{font-family:'Cinzel',serif;font-size:11.5px;letter-spacing:2px;color:#efe6cb;
+    display:flex;align-items:center;gap:7px;border-bottom:1px solid #3a425788;padding-bottom:8px;margin-bottom:8px}
+  .path h5 .ic{width:17px;height:17px}
+  .opt{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:6px 7px;border-radius:4px;
+    font-size:12.5px;color:#cfc6ab;cursor:pointer;border:1px solid transparent}
+  .opt:hover{background:#161c2a}
+  .opt.sel{border-color:var(--gold);background:rgba(232,201,106,.07)}
+  .opt .cost{font-weight:700;color:var(--gold);white-space:nowrap}
+  .opt .cost.dim{color:var(--text-dim)}
+  .opt-desc{font-size:11px;font-style:italic;color:var(--text-dim);padding:2px 8px 6px;line-height:1.35}
+  .opt-desc b{color:#c9aef5}
+
+  /* ===== 3. TRADE ===== */
+  .trade{width:100%;max-width:760px}
+  .trade-cols{display:grid;grid-template-columns:1fr 44px 1fr;gap:10px;align-items:stretch;margin-top:14px}
+  @media(max-width:640px){.trade-cols{grid-template-columns:1fr}}
+  .offer{background:#0d1119;border:1px solid #3a4257;border-radius:6px;padding:12px}
+  .offer h5{font-family:'Cinzel',serif;font-size:11px;letter-spacing:1.5px;margin-bottom:9px;display:flex;align-items:center;gap:8px}
+  .offer h5 .portrait{width:26px;height:26px;font-size:11px;border-width:1.5px}
+  .asset{display:flex;align-items:center;gap:8px;padding:6px 8px;background:#161c2a;border-radius:4px;
+    font-size:12.5px;margin-bottom:6px;border-left:3px solid var(--ac,#3a4257)}
+  .asset .ic{width:13px;height:13px;fill:#8a95a5}
+  .asset i{color:var(--text-dim);font-size:11px;margin-left:auto;font-style:italic}
+  .gold-input{display:flex;align-items:center;gap:7px;margin-top:9px}
+  .gold-input input{
+    width:80px;background:#06080e;border:1px solid #3a4257;color:var(--gold);font-family:'Alegreya',serif;
+    font-weight:700;font-size:14px;padding:6px 8px;border-radius:4px;text-align:right}
+  .gold-input span{font-size:12px;color:var(--text-dim)}
+  .swap{display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--gold-deep)}
+  .npc-line{
+    margin-top:14px;background:rgba(224,168,50,.06);border:1px solid #e0a83233;border-radius:5px;
+    padding:9px 12px;font-size:12.5px;font-style:italic;color:#e6d8b5;display:flex;gap:9px;align-items:center}
+  .npc-line .portrait{width:30px;height:30px;font-size:12px}
+
+  /* ===== 4. FORK ===== */
+  .fork{max-width:560px;width:100%}
+  .routes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+  @media(max-width:560px){.routes{grid-template-columns:1fr}}
+  .route{background:#0d1119;border:1px solid #3a4257;border-radius:6px;padding:13px;cursor:pointer;text-align:left}
+  .route:hover{border-color:var(--gold)}
+  .route h5{font-family:'Cinzel',serif;font-size:13px;color:#efe6cb;letter-spacing:1px;margin-bottom:6px}
+  .route p{font-size:12px;color:#b5ab8f;line-height:1.4}
+  .route .tag{display:inline-block;font-size:10px;font-family:'Cinzel',serif;letter-spacing:1px;padding:2px 8px;
+    border-radius:9px;margin-top:8px}
+  .route .safe{color:#8fd0a0;border:1px solid #8fd0a044}
+  .route .risky{color:#e07a62;border:1px solid #e07a6244}
+  .steps-note{text-align:center;margin-top:12px;font-size:12px;color:var(--text-dim);font-style:italic}
+
+  /* ===== 5. FATE CARD ===== */
+  .fatecard{
+    width:250px;border-radius:10px;padding:22px 18px;text-align:center;
+    background:radial-gradient(circle at 50% 18%, #3d2a5e, #1c1230 70%);
+    border:2px solid #8f6fd0;box-shadow:0 0 34px rgba(143,111,208,.5), 0 10px 40px #000;
+    display:flex;flex-direction:column;align-items:center;gap:12px;
+  }
+  .fatecard .ic{width:38px;height:38px;fill:#c9aef5;filter:drop-shadow(0 0 8px #8f6fd0)}
+  .fatecard h5{font-family:'Cinzel',serif;font-weight:900;font-size:19px;letter-spacing:2px;color:#e6d5ff;
+    text-shadow:0 0 14px rgba(201,174,245,.6)}
+  .fatecard p{font-size:13px;line-height:1.45;color:#cbbde6}
+  .fatecard p b{color:#fff}
+  .fatecard .kicker{font-size:10px;letter-spacing:3px;font-family:'Cinzel',serif;color:#8f6fd0}
+
+  /* ===== 6. DUNGEON ===== */
+  .dungeon{max-width:560px;width:100%;position:relative;overflow:hidden}
+  .dungeon::before{
+    content:"";position:absolute;inset:0;border-radius:6px;pointer-events:none;
+    background:repeating-linear-gradient(90deg, transparent 0 54px, rgba(0,0,0,.35) 54px 62px);
+  }
+  .dungeon-opts{display:flex;flex-direction:column;gap:9px;margin-top:14px}
+  .dopt{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#0d1119;
+    border:1px solid #3a4257;border-radius:6px;padding:11px 13px;cursor:pointer}
+  .dopt:hover{border-color:var(--gold-deep)}
+  .dopt .dname{font-family:'Cinzel',serif;font-size:12.5px;color:#efe6cb;letter-spacing:1px}
+  .dopt .ddesc{font-size:11.5px;color:var(--text-dim);font-style:italic}
+  .dopt .dcost{font-weight:700;color:var(--gold);white-space:nowrap}
+
+  /* ===== 7. AUCTION ===== */
+  .auction{max-width:600px;width:100%}
+  .lot{display:flex;align-items:center;gap:11px;justify-content:center;margin-top:10px}
+  .lot .dot{width:20px;height:20px;border-radius:50%;background:var(--r-wild);border:2px solid #0d1117}
+  .lot b{font-family:'Cinzel',serif;letter-spacing:1px;color:#efe6cb}
+  .lot span{color:var(--text-dim);font-size:12.5px}
+  .bids{display:flex;gap:10px;justify-content:center;margin:16px 0 6px;flex-wrap:wrap}
+  .bid{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 13px;border-radius:6px;
+    background:#0d1119;border:1px solid #3a4257;min-width:86px}
+  .bid.lead{border-color:var(--gold);box-shadow:0 0 14px rgba(232,201,106,.2)}
+  .bid.out{opacity:.38}
+  .bid .portrait{width:32px;height:32px;font-size:13px}
+  .bid b{font-size:14px;color:var(--gold)}
+  .bid small{font-size:10px;color:var(--text-dim);font-style:italic}
+  .timerbar{height:5px;background:#0d1119;border-radius:3px;margin:12px auto 0;max-width:340px;overflow:hidden}
+  .timerbar i{display:block;height:100%;width:62%;background:linear-gradient(90deg,#c49a2e,#e8c96a);
+    box-shadow:0 0 8px rgba(232,201,106,.6)}
+
+  /* ===== 8. VICTORY ===== */
+  .victory{max-width:600px;width:100%;text-align:center;position:relative;overflow:hidden}
+  .victory::before{content:"";position:absolute;inset:-40px;pointer-events:none;
+    background:radial-gradient(circle at 50% 30%, rgba(232,201,106,.16), transparent 60%)}
+  .victory .vword{
+    font-family:'Cinzel',serif;font-weight:900;font-size:44px;letter-spacing:10px;color:var(--gold);
+    text-shadow:0 0 30px rgba(232,201,106,.55), 0 3px 6px #000;margin:6px 0 2px}
+  .victory .vsub{font-style:italic;color:#e6d8b5;font-size:14px}
+  .vstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0 4px}
+  @media(max-width:560px){.vstats{grid-template-columns:repeat(2,1fr)}}
+  .vstat{background:#0d1119;border:1px solid #3a4257;border-radius:6px;padding:10px 6px}
+  .vstat b{display:block;font-family:'Cinzel',serif;font-size:17px;color:var(--gold)}
+  .vstat span{font-size:10.5px;letter-spacing:1px;color:var(--text-dim);font-family:'Cinzel',serif}
+
+  .footnote{text-align:center;color:#5c5a4a;font-style:italic;font-size:12px;margin-top:40px}
+</style>
+</head>
+<body>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-settle" viewBox="0 0 24 24"><path d="M4 12 L12 4 L20 12 V20 H14 V15 H10 V20 H4 Z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2 L14.5 9.5 L22 12 L14.5 14.5 L12 22 L9.5 14.5 L2 12 L9.5 9.5 Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 L20 5 V11 C20 17 16 20 12 22 C8 20 4 17 4 11 V5 Z"/></symbol>
+  <symbol id="i-portal" viewBox="0 0 24 24"><path d="M12 3 A9 9 0 1 0 12 21 A9 9 0 1 0 12 3 Z M12 6.5 A5.5 5.5 0 1 1 12 17.5 A5.5 5.5 0 1 1 12 6.5 Z" fill-rule="evenodd"/><circle cx="12" cy="12" r="2.4"/></symbol>
+  <symbol id="i-scroll" viewBox="0 0 24 24"><path d="M7 3 H19 A2 2 0 0 1 21 5 V6 H9 V19 A2 2 0 0 1 5 19 V5 A2 2 0 0 1 7 3 Z M9 8 H19 V17 A3 3 0 0 0 20 19 H10 A3 3 0 0 1 9 17 Z"/></symbol>
+  <symbol id="i-bars" viewBox="0 0 24 24"><path d="M4 3 H20 V5 H4 Z M4 19 H20 V21 H4 Z M6 5 H8 V19 H6 Z M11 5 H13 V19 H11 Z M16 5 H18 V19 H16 Z"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24"><path d="M4 19 L4 8 L9 12 L12 5 L15 12 L20 8 L20 19 Z"/></symbol>
+</svg>
+
+<div class="page">
+  <header class="page-header">
+    <h1>SECONDARY SCREENS</h1>
+    <p>Realms of Fortune — mockup v1 of the dialogs &amp; flows around the main map (static)</p>
+  </header>
+
+  <!-- ============ 1. NEW GAME / CLASS SELECT ============ -->
+  <h2 class="screen-title">1 · NEW GAME — CHOOSE YOUR CHAMPION<small>full-screen state before the match begins</small></h2>
+  <div class="frame stage">
+    <div class="setup">
+      <h2 class="dialog-h">Choose Your Champion</h2>
+      <p class="dialog-sub">One passive trait, always on. One ability, every 3 turns.</p>
+
+      <div class="class-cards">
+        <div class="ccard"><div class="top"><div class="portrait" style="--pc:#e05038">W</div><div class="cname">WARRIOR</div></div>
+          <div class="trait"><b>PASSIVE</b>Leaves the Dungeon free — its perils never touch him.</div>
+          <div class="trait"><b>SHAKEDOWN</b>Collect 25g from every player on or beside your node. <span class="cd">3-turn cooldown</span></div></div>
+        <div class="ccard sel"><div class="top"><div class="portrait" style="--pc:#4f8ef0">W</div><div class="cname">WIZARD</div></div>
+          <div class="trait"><b>PASSIVE</b>Enchantments cost 25% less.</div>
+          <div class="trait"><b>BLINK</b>Teleport up to 8 nodes instead of rolling. <span class="cd">3-turn cooldown</span></div></div>
+        <div class="ccard"><div class="top"><div class="portrait" style="--pc:#b05fd0">R</div><div class="cname">ROGUE</div></div>
+          <div class="trait"><b>PASSIVE</b>Pays 10% less rent.</div>
+          <div class="trait"><b>PICKPOCKET</b>When paying rent, roll a d6 — on 5–6 pay nothing. <span class="cd">3-turn cooldown</span></div></div>
+        <div class="ccard"><div class="top"><div class="portrait" style="--pc:#e8c96a">C</div><div class="cname">CLERIC</div></div>
+          <div class="trait"><b>PASSIVE</b>Immune to Curses; cleanses own lands freely.</div>
+          <div class="trait"><b>SANCTUARY</b>Untargetable by abilities &amp; Fate until your next turn. <span class="cd">3-turn cooldown</span></div></div>
+        <div class="ccard"><div class="top"><div class="portrait" style="--pc:#e07a9a">B</div><div class="cname">BARD</div></div>
+          <div class="trait"><b>PASSIVE</b>Earn 10g whenever anyone lands on unowned land.</div>
+          <div class="trait"><b>SILVER TONGUE</b>Copy any trade struck since your last turn. <span class="cd">3-turn cooldown</span></div></div>
+        <div class="ccard"><div class="top"><div class="portrait" style="--pc:#c98a3f">M</div><div class="cname">MERCHANT</div></div>
+          <div class="trait"><b>PASSIVE</b>All construction costs 15% less.</div>
+          <div class="trait"><b>APPRAISE</b>Buy unowned land within 5 nodes at +20% price. <span class="cd">3-turn cooldown</span></div></div>
+        <div class="ccard"><div class="top"><div class="portrait" style="--pc:#3f8f5a">R</div><div class="cname">RANGER</div></div>
+          <div class="trait"><b>PASSIVE</b>May move one node fewer or farther than rolled.</div>
+          <div class="trait"><b>TRACK</b>Travel to any unowned land; first right to buy. <span class="cd">3-turn cooldown</span></div></div>
+        <div class="ccard"><div class="top"><div class="portrait" style="--pc:#8a95a5">N</div><div class="cname">NECROMANCER</div></div>
+          <div class="trait"><b>PASSIVE</b>Claims one mortgaged land from every bankruptcy.</div>
+          <div class="trait"><b>RAISE DEAD</b>Un-mortgage one of your lands for free. <span class="cd">3-turn cooldown</span></div></div>
+      </div>
+
+      <div class="setup-foot">
+        <div class="foot-group">
+          <span class="foot-label">RIVALS</span>
+          <div class="opp-row">
+            <div class="portrait" style="--pc:var(--p-borin)">B</div>
+            <div class="portrait" style="--pc:var(--p-vex)">V</div>
+            <div class="portrait" style="--pc:var(--p-karg)">K</div>
+            <div class="opp-add">−</div>
+          </div>
+        </div>
+        <div class="foot-group">
+          <span class="foot-label">DIFFICULTY</span>
+          <div class="diff"><span>SQUIRE</span><span class="on">KNIGHT</span><span>WARLORD</span></div>
+        </div>
+        <div class="foot-group">
+          <span class="foot-label">&nbsp;</span>
+          <button class="btn">BEGIN THE CONTEST</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 2. BUILD DIALOG ============ -->
+  <h2 class="screen-title">2 · DEVELOP A PROPERTY<small>opens from the map when you own the full set — pick a path for the empty slot</small></h2>
+  <div class="frame stage">
+    <div class="dialog build">
+      <h2 class="dialog-h">Develop Arcanum</h2>
+      <p class="dialog-sub">Mage Districts · rent today 145g · one slot free</p>
+      <div class="slots-row">
+        <div class="slot"><svg class="ic"><use href="#i-settle"/></svg></div>
+        <div class="slot"><svg class="ic"><use href="#i-star"/></svg></div>
+        <div class="slot empty">+</div>
+      </div>
+      <div class="paths">
+        <div class="path">
+          <h5><svg class="ic"><use href="#i-settle"/></svg>SETTLEMENT</h5>
+          <div class="opt"><span>Raise to tier 2</span><span class="cost">130g</span></div>
+          <div class="opt-desc">Rent 145g → 320g. Two more tiers make a Castle.</div>
+        </div>
+        <div class="path">
+          <h5><svg class="ic"><use href="#i-star"/></svg>ENCHANTMENT <span style="margin-left:auto;font-size:9px;color:#8fd0a0">WIZARD −25%</span></h5>
+          <div class="opt"><span>Ward</span><span class="cost">75g</span></div>
+          <div class="opt sel"><span>Gilded Vault</span><span class="cost">75g</span></div>
+          <div class="opt-desc"><b>Gilded Vault:</b> earn 25g from the bank each time you pass the Crossroads. +½ rent tier.</div>
+          <div class="opt"><span>Snare Trap</span><span class="cost">75g</span></div>
+          <div class="opt"><span>Beacon</span><span class="cost">75g</span></div>
+          <div class="opt"><span>Scrying Orb</span><span class="cost">75g</span></div>
+        </div>
+        <div class="path">
+          <h5><svg class="ic"><use href="#i-shield"/></svg>GARRISON</h5>
+          <div class="opt"><span>Guard Post</span><span class="cost">50g</span></div>
+          <div class="opt"><span>Ogre Mercenary</span><span class="cost">150g</span></div>
+          <div class="opt"><span>Drake Roost</span><span class="cost dim">250g — bank has none left</span></div>
+        </div>
+      </div>
+      <div class="foot">
+        <span class="goldline" style="align-self:center">TREASURY&nbsp; 812g</span>
+        <button class="btn">BUILD GILDED VAULT — 75g</button>
+        <button class="btn ghost">CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 3. TRADE ============ -->
+  <h2 class="screen-title">3 · STRIKE A BARGAIN<small>trading with an AI — it answers in character, and counters at most once</small></h2>
+  <div class="frame stage">
+    <div class="dialog trade">
+      <h2 class="dialog-h">Strike a Bargain</h2>
+      <div class="trade-cols">
+        <div class="offer">
+          <h5><div class="portrait" style="--pc:var(--p-you)">S</div>YOU OFFER</h5>
+          <div class="asset" style="--ac:var(--way)"><svg class="ic"><use href="#i-portal"/></svg>East Waygate<i>200g</i></div>
+          <div class="gold-input"><input value="150"><span>gold</span></div>
+        </div>
+        <div class="swap">⇄</div>
+        <div class="offer">
+          <h5><div class="portrait" style="--pc:var(--p-borin)">B</div>BORIN GIVES</h5>
+          <div class="asset" style="--ac:var(--r-silver)"><svg class="ic"><use href="#i-settle"/></svg>Ferry Cross<i>100g</i></div>
+          <div class="asset" style="--ac:var(--r-silver)"><svg class="ic"><use href="#i-settle"/></svg>Silver Quay<i>110g</i></div>
+          <div class="gold-input"><input value="0"><span>gold</span></div>
+        </div>
+      </div>
+      <div class="npc-line">
+        <div class="portrait" style="--pc:var(--p-borin)">B</div>
+        <span>Borin strokes his beard. <b>"A Waygate for my rivers? Add another 100 gold and we'll shake on it."</b></span>
+      </div>
+      <div class="foot">
+        <button class="btn">PROPOSE TRADE</button>
+        <button class="btn ghost">ACCEPT HIS COUNTER — +100g</button>
+        <button class="btn ghost">WALK AWAY</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 4. FORK IN THE ROAD ============ -->
+  <h2 class="screen-title">4 · FORK IN THE ROAD<small>appears mid-move when your path splits — the map highlights both routes</small></h2>
+  <div class="frame stage">
+    <div class="dialog fork">
+      <h2 class="dialog-h">A Fork in the Road</h2>
+      <p class="dialog-sub">You stand at Silver Quay with 4 steps yet to walk.</p>
+      <div class="routes">
+        <div class="route">
+          <h5>THE COAST ROAD</h5>
+          <p>North through the Wildwood and the far Waygates. Passes the Crossroads for 150g.</p>
+          <span class="tag safe">SAFER · LONGER</span>
+        </div>
+        <div class="route">
+          <h5>THE IRONVEIN PASS</h5>
+          <p>Over the mountains, past the Dungeon's gates. Skips half the realm — and its rents.</p>
+          <span class="tag risky">FAST · PERILOUS</span>
+        </div>
+      </div>
+      <p class="steps-note">Rangers may still bend the roll by one step after choosing.</p>
+    </div>
+  </div>
+
+  <!-- ============ 5. FATE CARD ============ -->
+  <h2 class="screen-title">5 · FATE REVEALED<small>card flip overlay — the map dims behind it</small></h2>
+  <div class="frame stage" style="background-image:radial-gradient(circle at 50% 45%, rgba(143,111,208,.14), transparent 65%)">
+    <div class="fatecard">
+      <span class="kicker">FATE</span>
+      <svg class="ic"><use href="#i-star"/></svg>
+      <h5>ROCKFALL!</h5>
+      <p>The mountain groans and the trail vanishes beneath you.<br><b>Go to the Dungeon.</b> Do not pass the Crossroads.</p>
+      <button class="btn secondary">SO BE IT</button>
+    </div>
+  </div>
+
+  <!-- ============ 6. THE DUNGEON ============ -->
+  <h2 class="screen-title">6 · THE DUNGEON<small>your turn while imprisoned — Garrisons at home demand double upkeep</small></h2>
+  <div class="frame stage">
+    <div class="dialog dungeon">
+      <h2 class="dialog-h">The Dungeon</h2>
+      <p class="dialog-sub">Turn 2 of 3 · your lands still pay you rent, but your garrisons cost double</p>
+      <div class="dungeon-opts">
+        <div class="dopt"><div><div class="dname">BRIBE THE JAILER</div><div class="ddesc">Leave at once. Gold opens every door.</div></div><div class="dcost">50g</div></div>
+        <div class="dopt"><div><div class="dname">ROLL FOR ESCAPE</div><div class="ddesc">Doubles set you free. Last chance next turn.</div></div><div class="dcost">2d6</div></div>
+        <div class="dopt"><div><div class="dname">FIGHT YOUR WAY OUT</div><div class="ddesc">Escape on 8+. Fail and take 25g in bruises. Warriors never fail.</div></div><div class="dcost">8+</div></div>
+      </div>
+      <div class="foot"><button class="btn ghost" disabled>USE WRIT OF RELEASE — none held</button></div>
+    </div>
+  </div>
+
+  <!-- ============ 7. AUCTION ============ -->
+  <h2 class="screen-title">7 · AUCTION<small>mandatory when a player declines to buy — keeps the map filling fast</small></h2>
+  <div class="frame stage">
+    <div class="dialog auction">
+      <h2 class="dialog-h">Auction</h2>
+      <div class="lot"><span class="dot"></span><b>ELDER GLADE</b><span>The Wildwood · listed 140g</span></div>
+      <div class="bids">
+        <div class="bid lead"><div class="portrait" style="--pc:var(--p-borin)">B</div><b>120g</b><small>leading</small></div>
+        <div class="bid"><div class="portrait" style="--pc:var(--p-karg)">K</div><b>90g</b><small>thinking…</small></div>
+        <div class="bid out"><div class="portrait" style="--pc:var(--p-vex)">V</div><b>—</b><small>passed</small></div>
+        <div class="bid"><div class="portrait" style="--pc:var(--p-you)">S</div><b>?</b><small>your move</small></div>
+      </div>
+      <div class="foot">
+        <button class="btn">BID 130g</button>
+        <button class="btn ghost">BID 170g</button>
+        <button class="btn danger">PASS</button>
+      </div>
+      <div class="timerbar"><i></i></div>
+    </div>
+  </div>
+
+  <!-- ============ 8. VICTORY ============ -->
+  <h2 class="screen-title">8 · END OF THE CONTEST<small>bankrupt them all, or richest at round 20</small></h2>
+  <div class="frame stage">
+    <div class="dialog victory">
+      <span class="kicker" style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:4px;color:var(--gold-deep)">THE REALMS HAVE A NEW MASTER</span>
+      <div class="vword">VICTORY</div>
+      <p class="vsub">Serane the Wizard rules the Known Realms.</p>
+      <div class="vstats">
+        <div class="vstat"><b>17</b><span>ROUNDS</span></div>
+        <div class="vstat"><b>3,240g</b><span>NET WORTH</span></div>
+        <div class="vstat"><b>7</b><span>LANDS HELD</span></div>
+        <div class="vstat"><b>2</b><span>RIVALS RUINED</span></div>
+      </div>
+      <div class="foot">
+        <button class="btn">PLAY AGAIN</button>
+        <button class="btn ghost">NEW CHAMPION</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="footnote">Static mockups. Mechanics per DESIGN.md — class kit §3, upgrade paths §4, dungeon §6, auctions &amp; pacing §8.</p>
+</div>
+</body>
+</html>
