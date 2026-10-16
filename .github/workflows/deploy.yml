@@ -33,7 +33,8 @@ jobs:
           path: dist
 
   deploy:
-    if: github.event_name != 'pull_request'
+    # Pages on the free plan needs a public repo; until then this job is skipped, not failed.
+    if: github.event_name != 'pull_request' && github.event.repository.visibility == 'public'
     needs: build
     runs-on: ubuntu-latest
     environment:
