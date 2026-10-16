@@ -79,6 +79,7 @@ export function renderPanel(root: HTMLElement, state: GameState, human: number, 
 
   root.innerHTML = `
     <div class="panel-head">
+      <button class="speed menu" id="btn-menu" title="Back to the title screen — your game is saved">☰ MENU</button>
       <h3>ROUND ${Math.min(state.round, 20)} of 20</h3>
       <button class="speed" id="btn-speed" title="Animation speed">${view.speed}×</button>
     </div>

@@ -7,6 +7,7 @@ import { AI_ROSTER, CLASS_INFO, esc, HERO_NAMES, SEAT_COLORS } from './theme';
 import { buildMap, floatAtNode, pingNode, updateMap, type MapLayers } from './map';
 import { renderPanel, setDieFace } from './panel';
 import { TokenLayer, sleep } from './tokens';
+import { clearSave, loadSave, writeSave, type SaveGame } from './save';
 import { abilityTargets, endScreen, pendingDialog, propertySheet, tradeBuilder } from './dialogs';
 
 const HUMAN = 0;
@@ -24,7 +25,8 @@ let modal: { el: HTMLElement; refresh?: () => HTMLElement } | null = null;
 let gameId = 0;
 /** An action's consequences are still animating: input is locked and the panel lags the engine. */
 let busy = false;
-let aiRunning = false;
+/** The game whose AI loop is running, or -1; a stale loop from an abandoned game never blocks a new one. */
+let aiLoopFor = -1;
 /** Pause before the AI's next move, chosen from what the last move was. */
 let aiDelay = 600;
 
@@ -56,15 +58,18 @@ function showSetup() {
   gameId++;
   busy = false;
   let chosen: ClassId = 'wizard';
+  let confirmAbandon = false;
   const classes = Object.entries(CLASS_INFO) as Array<[ClassId, typeof CLASS_INFO[ClassId]]>;
 
   const render = () => {
+    const save = loadSave();
     app.innerHTML = `
     <div class="page setup-page">
       <header class="page-header"><h1>REALMS OF FORTUNE</h1>
         <p>Bankrupt three rivals — or be the richest when winter ends.</p></header>
+      ${save ? continueCard(save, confirmAbandon) : ''}
       <div class="frame stage"><div class="setup">
-        <h2 class="dialog-h">Choose Your Champion</h2>
+        <h2 class="dialog-h">${save ? 'Or Choose a New Champion' : 'Choose Your Champion'}</h2>
         <p class="dialog-sub">One passive trait, always on. One ability, every 3 turns.</p>
         <div class="class-cards">${classes.map(([id, c]) => `
           <button class="ccard ${id === chosen ? 'sel' : ''}" data-cls="${id}">
@@ -82,6 +87,7 @@ function showSetup() {
           <div class="foot-group"><span class="foot-label">&nbsp;</span>
             <button class="btn" id="begin">BEGIN THE CONTEST</button></div>
         </div>
+        ${save ? '<p class="dialog-sub">Beginning a new contest replaces your saved one.</p>' : ''}
       </div></div>
     </div>`;
     app.querySelectorAll<HTMLElement>('[data-cls]').forEach(b =>
@@ -89,8 +95,33 @@ function showSetup() {
     app.querySelectorAll<HTMLElement>('[data-diff]').forEach(b =>
       b.addEventListener('click', () => { difficulty = b.dataset.diff as Difficulty; render(); }));
     app.querySelector('#begin')!.addEventListener('click', () => startGame(chosen));
+    app.querySelector('#continue')?.addEventListener('click', () => { if (save) resumeGame(save); });
+    app.querySelector('#abandon')?.addEventListener('click', () => {
+      if (!confirmAbandon) { confirmAbandon = true; render(); return; }
+      clearSave();
+      confirmAbandon = false;
+      render();
+    });
   };
   render();
+}
+
+function continueCard(save: SaveGame, confirming: boolean): string {
+  const s = save.state;
+  const me = s.players[HUMAN];
+  const mins = Math.round((Date.now() - save.savedAt) / 60000);
+  const ago = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} h ago`;
+  return `
+  <div class="frame continue">
+    <span class="portrait" style="--pc:${SEAT_COLORS[HUMAN]}">${esc(me.name[0])}</span>
+    <div class="continue-info">
+      <b>${esc(me.name)} the ${CLASS_INFO[me.cls].label}</b>
+      <small>Round ${Math.min(s.round, 20)} of 20 · ${me.bankrupt ? 'ruined' : me.cash + 'g'} ·
+        ${save.difficulty[0].toUpperCase() + save.difficulty.slice(1)} · saved ${ago}</small>
+    </div>
+    <button class="btn" id="continue">CONTINUE</button>
+    <button class="btn ${confirming ? 'danger' : 'ghost'} small" id="abandon">${confirming ? 'REALLY ABANDON?' : 'ABANDON'}</button>
+  </div>`;
 }
 
 /* ---------------- game screen ---------------- */
@@ -102,10 +133,29 @@ function startGame(cls: ClassId) {
     { name: HERO_NAMES[cls], cls, human: true },
     ...rivals,
   ]);
+  writeSave(state, difficulty);
+  enterGame();
+  banner('YOUR TURN', SEAT_COLORS[HUMAN], `Round 1 · ${state.players[HUMAN].name} the ${CLASS_INFO[cls].label}`);
+}
+
+function resumeGame(save: SaveGame) {
+  state = save.state;
+  difficulty = save.difficulty;
+  enterGame();
+  const p = state.players[state.current];
+  banner(p.id === HUMAN ? 'WELCOME BACK' : `${p.name.toUpperCase()}'S TURN`, SEAT_COLORS[p.id],
+    `Round ${Math.min(state.round, 20)} · ${state.season[0].toUpperCase() + state.season.slice(1)}`);
+  aiDelay = BANNER_MS - 150;
+  aiLoop();
+}
+
+/** Build the game screen around the current `state`. */
+function enterGame() {
+  if (!state) return;
   gameId++;
   busy = false;
   modal = null;
-  shown = { cash: state.players.map(p => p.cash), seq: state.eventSeq, dice: [1, 1] };
+  shown = { cash: state.players.map(p => p.cash), seq: state.eventSeq, dice: state.lastRoll ?? [1, 1] };
   freshAfter = state.eventSeq;
 
   app.innerHTML = `
@@ -122,7 +172,6 @@ function startGame(cls: ClassId) {
   layers = buildMap(svg, onNodeClick);
   tokens = new TokenLayer(layers.tokens, state.players);
   render();
-  banner('YOUR TURN', SEAT_COLORS[HUMAN], `Round 1 · ${state.players[HUMAN].name} the ${CLASS_INFO[cls].label}`);
 }
 
 function onNodeClick(id: NodeId) {
@@ -184,6 +233,7 @@ function bindPanel() {
   on('btn-roll', () => dispatch({ type: 'roll' }));
   on('btn-end', () => dispatch({ type: 'endTurn' }));
   on('btn-speed', cycleSpeed);
+  on('btn-menu', showSetup);
   on('btn-trade', () => { if (state && !busy) openModal(tradeBuilder(state, HUMAN, dispatch, closeModal)); });
   on('btn-ability', () => {
     if (!state || busy) return;
@@ -228,6 +278,8 @@ async function perform(action: Action): Promise<string | null> {
   const before = snapshot(state);
   const err = applyAction(state, action);
   if (err) return err;
+  if (state.winner !== null) clearSave();
+  else writeSave(state, difficulty);
   const notable = await present(before, action);
   aiDelay = nextAiDelay(action, before, notable);
   return null;
@@ -380,9 +432,9 @@ async function dispatch(a: Action) {
 /* ---------------- AI driver ---------------- */
 
 async function aiLoop() {
-  if (aiRunning) return;
-  aiRunning = true;
   const gid = gameId;
+  if (aiLoopFor === gid) return;
+  aiLoopFor = gid;
   try {
     while (state && gid === gameId && state.winner === null && actingPlayer(state) !== HUMAN) {
       await sleep(aiDelay / speed);
@@ -399,7 +451,7 @@ async function aiLoop() {
       }
     }
   } finally {
-    aiRunning = false;
+    if (aiLoopFor === gid) aiLoopFor = -1;
   }
   if (gid === gameId) render();
 }

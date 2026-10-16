@@ -4,6 +4,10 @@ A single-player, web-based fantasy board game inspired by Monopoly: roll dice, t
 organic continent map, invest in territories, and bankrupt three AI rivals — as one of
 eight character classes with unique traits.
 
+**Play it:** https://0903lokchan.github.io/realms-of-fortune/ — every push to `main` is
+tested and redeployed by [the workflow](.github/workflows/deploy.yml). Games autosave
+in the browser; pick **Continue** on the title screen to resume.
+
 - **[DESIGN.md](DESIGN.md)** — full game design (board, classes, upgrade paths, AI, pacing).
 - **[mockups/](mockups/)** — visual mockups: `game-screen.html` (map + HUD), `screens.html` (dialogs).
 - **[src/engine/](src/engine/)** — headless, deterministic rules engine (TypeScript).
@@ -20,7 +24,9 @@ The engine is a pure state machine with no UI dependencies:
 - Whenever a player must decide something (buy or pass, fork in the road, auction bid,
   dungeon escape, trade response…), `state.pending` names the decision and who owes it.
   The UI answers for the human; `decide(state)` in `src/ai/ai.ts` answers for AI players.
-- `state.events` is a running log ready for the game screen's turn feed.
+- `state.events` is a running log ready for the game screen's turn feed, and `state.fx`
+  lists the dice rolls and token paths of the last action for the UI to animate.
+- The whole `GameState` is plain JSON, so a save is just the serialized state.
 
 ## Commands
 
@@ -43,4 +49,7 @@ npm run build     # production bundle
   (the Merchant still overperforms in AI-vs-AI sims).
 - UI: playable — class select, live SVG map (click a land for its sheet), HUD,
   and dialogs for every engine decision (buy/auction, forks, dungeon, trades,
-  ability targeting, Fate curses). AI turns animate on a short timer.
+  ability targeting, Fate curses). Tokens hop along the trails, dice tumble, gold
+  changes and land changes are called out, and banners announce each turn;
+  a 1×/2×/3× speed toggle sits in the panel header.
+- Saves: one autosave slot in `localStorage`, written after every action.

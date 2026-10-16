@@ -53,6 +53,23 @@ describe('full AI games', () => {
     }
   });
 
+  it('a game saved as JSON mid-play resumes identically', () => {
+    for (const cut of [1, 37, 150, 400]) {
+      const original = createGame(21, LINEUP);
+      for (let i = 0; i < cut && original.phase !== 'gameover'; i++) {
+        expect(applyAction(original, decide(original))).toBeNull();
+      }
+      const resumed = JSON.parse(JSON.stringify(original));
+      for (const s of [original, resumed]) {
+        let steps = 0;
+        while (s.phase !== 'gameover' && ++steps < 20000) {
+          expect(applyAction(s, decide(s))).toBeNull();
+        }
+      }
+      expect(resumed).toEqual(original);
+    }
+  });
+
   it('games are deterministic for a given seed', () => {
     const a = play(11), b = play(11);
     expect(a.winner).toBe(b.winner);
