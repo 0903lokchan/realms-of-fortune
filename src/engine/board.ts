@@ -1,4 +1,4 @@
-import type { BoardNode, NodeId, Region } from './types';
+import type { BoardNode, GarrisonType, NodeId, Region } from './types';
 import { FERRY_TOLL } from './types';
 
 // The map from DESIGN.md §2 / mockups: a 27-node main loop, the Ironvein Pass,
@@ -98,8 +98,8 @@ export const BUILD_COST: Record<Region, number> = {
 };
 
 export const ENCHANT_COST = 100;
-export const GARRISON_COST: Record<'guard' | 'ogre' | 'drake', number> = { guard: 50, ogre: 150, drake: 250 };
-export const GARRISON_UPKEEP: Record<'guard' | 'ogre' | 'drake', number> = { guard: 0, ogre: 10, drake: 25 };
+export const GARRISON_COST: Record<GarrisonType, number> = { guard: 50, ogre: 150, drake: 250, tower: 100 };
+export const GARRISON_UPKEEP: Record<GarrisonType, number> = { guard: 0, ogre: 10, drake: 25, tower: 0 };
 
 export interface Walk { end: NodeId; path: NodeId[] }
 

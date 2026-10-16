@@ -53,3 +53,6 @@ npm run build     # production bundle
   changes and land changes are called out, and banners announce each turn;
   a 1×/2×/3× speed toggle sits in the panel header.
 - Saves: one autosave slot in `localStorage`, written after every action.
+- Heroes, challenges and tactics (DESIGN.md §11, inspired by 富甲天下4): hire heroes and buy
+  tactic cards at the Crossroads Bazaar, station heroes to guard lands, and challenge a rival's
+  land instead of paying rent. Duels and tactic cards play out as short reveals over the map.

@@ -5,17 +5,20 @@
 
 import { BOARD, distancesFrom, node, OWNABLE_TYPES, PROPERTY_NODES, WAYGATES } from './board';
 import { CARD_BY_ID, FATE_CARDS, KEPT_QUESTS, QUEST_CARDS } from './cards';
-import { roll2d6, rollDie, shuffle } from './rng';
+import { hero, HEROES, SHORTCUT_ENTRANCES, tactic, TACTICS } from './heroes';
+import { nextRand, roll2d6, rollDie, shuffle } from './rng';
 import {
-  baseRent, buildError, garrison, hasEnchant, mortgageValue, netWorth, own, ownsFullSet,
-  playerProps, rentFor, settlementTiers, unmortgageCost, upgradeCost, upgradeSaleValue,
+  attackBase, baseRent, buildError, champion, defenseBase, garrison, hasEnchant, mortgageValue,
+  netWorth, own, ownsFullSet, playerProps, rentFor, resistChance, settlementTiers, unmortgageCost,
+  upgradeCost, upgradeSaleValue,
 } from './rules';
 import type {
-  Action, ClassId, GameState, NodeId, Player, PlayerId, TradeOffer, Upgrade,
+  Action, ClassId, GameState, HeroId, NodeId, Player, PlayerId, TacticId, TradeOffer, Upgrade,
 } from './types';
 import {
   ABILITY_COOLDOWN, AUTUMN_ROUND, BEACON_TOLL, CROSSROADS_INCOME, CURSE_CLEANSE_COST,
-  DUNGEON_BRIBE, DUNGEON_BRUISES, LEVY_COST, ROUND_CAP, START_CASH, VAULT_INCOME, WINTER_ROUND,
+  DUNGEON_BRIBE, DUNGEON_BRUISES, LEVY_COST, LURE_RANGE, MAX_HEROES, MAX_TACTICS, ROUND_CAP,
+  SACK_MARGIN, START_CASH, VAULT_INCOME, WINTER_ROUND,
 } from './types';
 import { GARRISON_UPKEEP } from './board';
 
@@ -30,25 +33,37 @@ export function createGame(seed: number, players: PlayerConfig[]): GameState {
       cash: START_CASH, pos: 'crossroads', bankrupt: false,
       inDungeon: false, dungeonTurns: 0, abilityCooldown: 0,
       sanctuary: false, writs: 0, keptQuests: [], actionUsed: false,
+      heroes: [], exhausted: [], tactics: [], tacticUsed: false, bazaarOpen: true, rooted: false, rootImmune: false, forcedMarch: false,
     })),
     ownership: {}, pending: null, movement: null, auction: null,
     consecutiveDoubles: 0,
     fateDeck: [], questDeck: [],
-    stock: { settlements: 32, enchants: { ward: 2, vault: 2, trap: 2, beacon: 2, orb: 2 } },
+    stock: { settlements: 32, enchants: { ward: 2, vault: 2, trap: 2, beacon: 2, orb: 2, academy: 2 } },
     lastTrade: null, lastRollDouble: false, lastRoll: null, rangerClaim: false,
-    events: [], eventSeq: 0, fx: [], winner: null,
+    events: [], eventSeq: 0, fx: [],
+    heroPool: [], forHire: [], closedRoutes: [], winner: null,
   };
   for (const n of BOARD.values()) {
     if (OWNABLE_TYPES.has(n.type)) {
       state.ownership[n.id] = {
         owner: null, mortgaged: false, upgrades: [],
-        cursed: false, trapArmed: false, orbReady: false,
+        cursed: false, trapArmed: false, orbReady: false, hero: null,
       };
     }
   }
   state.fateDeck = shuffle(state, FATE_CARDS.map(c => c.id));
   state.questDeck = shuffle(state, QUEST_CARDS.map(c => c.id));
+  // one starter each; tables bigger than the starter tier take the cheapest of the rest
+  const starters = shuffle(state, HEROES.filter(h => h.starter).map(h => h.id));
+  const rest = HEROES.filter(h => !h.starter).sort((a, b) => a.cost - b.cost).map(h => h.id);
+  state.players.forEach(p => p.heroes.push(starters.shift() ?? rest.shift()!));
+  state.heroPool = shuffle(state, [...starters, ...rest]);
+  refillForHire(state);
   return state;
+}
+
+function refillForHire(state: GameState) {
+  while (state.forHire.length < 3 && state.heroPool.length) state.forHire.push(state.heroPool.shift()!);
 }
 
 function log(state: GameState, text: string) {
@@ -124,6 +139,23 @@ function liquidate(state: GameState, player: Player, target: number) {
     player.cash += mortgageValue(id);
     log(state, `${player.name} mortgages ${node(id).name} for ${mortgageValue(id)}g.`);
   }
+  // 3) dismiss heroes, cheapest first
+  const byCost = [...player.heroes].sort((a, b) => hero(a).cost - hero(b).cost);
+  for (const h of byCost) {
+    if (player.cash >= target) return;
+    releaseHero(state, player, h);
+    player.cash += Math.floor(hero(h).cost / 2);
+    log(state, `${player.name} cannot pay ${hero(h).name}, who leaves for ${Math.floor(hero(h).cost / 2)}g of back wages.`);
+  }
+}
+
+/** A hero leaves a player's service (unstationed) and returns to the bottom of the pool. */
+function releaseHero(state: GameState, player: Player, h: HeroId) {
+  player.heroes = player.heroes.filter(x => x !== h);
+  player.exhausted = player.exhausted.filter(x => x !== h);
+  for (const o of Object.values(state.ownership)) if (o.hero === h) o.hero = null;
+  state.heroPool.push(h);
+  refillForHire(state);
 }
 
 function returnToStock(state: GameState, up: Upgrade) {
@@ -135,6 +167,8 @@ function bankrupt(state: GameState, player: Player, creditorId: PlayerId | null)
   player.bankrupt = true;
   player.cash = 0;
   log(state, `☠ ${player.name} is ruined!`);
+  for (const h of [...player.heroes]) releaseHero(state, player, h);
+  player.tactics = [];
   const estate = playerProps(state, player.id);
 
   // Necromancer passive: claim one mortgaged property for its mortgage cost.
@@ -199,7 +233,7 @@ function startMove(state: GameState, steps: number, rolled: [number, number] | n
 function stepMove(state: GameState) {
   const player = cur(state);
   while (state.movement && state.movement.remaining > 0) {
-    const outs = node(player.pos).out;
+    const outs = node(player.pos).out.filter(to => !routeClosedFor(state, to, player.id));
     if (outs.length > 1) {
       state.pending = { type: 'fork', player: player.id, options: [...outs] };
       return;
@@ -239,8 +273,16 @@ function advance(state: GameState, to: NodeId) {
   }
 }
 
+/** A shortcut burned by someone else stays shut until that player's next turn. */
+function routeClosedFor(state: GameState, entrance: NodeId, pid: PlayerId): boolean {
+  return state.closedRoutes.some(r => r.node === entrance && r.by !== pid);
+}
+
 function crossedCapital(state: GameState, player: Player) {
   player.cash += CROSSROADS_INCOME;
+  player.bazaarOpen = true;
+  player.exhausted = [];
+  player.rootImmune = false;
   log(state, `${player.name} passes the Crossroads and collects ${CROSSROADS_INCOME}g.`);
   for (const id of playerProps(state, player.id)) {
     const o = own(state, id);
@@ -287,19 +329,19 @@ function finishLanding(state: GameState) {
   if (state.winner === null) state.phase = 'postroll';
 }
 
-function payRent(state: GameState, player: Player, id: NodeId, dice: number) {
+/**
+ * Rent is owed on `id`: the payer chooses to pay, challenge, or pickpocket. `lured` rents
+ * (from a Lure tactic) happen outside the payer's own move and leave the turn phase alone.
+ */
+function payRent(state: GameState, player: Player, id: NodeId, dice: number, lured = false) {
   const o = own(state, id);
   const rent = rentFor(state, player, id, dice);
-  if (rent <= 0) return finishLanding(state);
-  const guarded = garrison(o) === 'guard' || garrison(o) === 'ogre' || garrison(o) === 'drake';
-  if (player.cls === 'rogue' && player.abilityCooldown === 0 && !guarded) {
-    state.pending = { type: 'pickpocket', player: player.id, node: id, rent, owner: o.owner! };
-    return;
-  }
-  settleRent(state, player, id, rent);
+  if (rent <= 0) { if (!lured) finishLanding(state); return; }
+  const canPickpocket = player.cls === 'rogue' && player.abilityCooldown === 0 && garrison(o) === null;
+  state.pending = { type: 'rentDue', player: player.id, node: id, rent, owner: o.owner!, lured, canPickpocket };
 }
 
-function settleRent(state: GameState, player: Player, id: NodeId, rent: number) {
+function settleRent(state: GameState, player: Player, id: NodeId, rent: number, lured: boolean) {
   const o = own(state, id);
   if (o.trapArmed && hasEnchant(o, 'trap')) {
     o.trapArmed = false;
@@ -309,7 +351,51 @@ function settleRent(state: GameState, player: Player, id: NodeId, rent: number) 
   charge(state, player.id, rent, owner);
   if (player.bankrupt) return;
   log(state, `${player.name} pays ${rent}g rent at ${node(id).name} to ${P(state, owner).name}.`);
-  finishLanding(state);
+  if (!lured) finishLanding(state);
+}
+
+/** Fight for the land instead of paying: win and pay nothing (crushing wins sack it); lose and pay double. */
+function challenge(state: GameState, player: Player, id: NodeId, rent: number, lured: boolean) {
+  const o = own(state, id);
+  const owner = P(state, o.owner!);
+  const attackHero = champion(state, player.id);
+  const defendHero = o.hero;
+  const attackBaseV = attackBase(state, player.id);
+  const defenseBaseV = defenseBase(state, id);
+  const attackDie = rollDie(state);
+  const defenseDie = rollDie(state);
+  const margin = attackBaseV + attackDie - (defenseBaseV + defenseDie);
+  const won = margin > 0;
+  const sacked = won && margin >= SACK_MARGIN && o.upgrades.length > 0 && !hasEnchant(o, 'ward');
+  state.fx.push({
+    type: 'duel', attacker: player.id, owner: owner.id, node: id, attackHero, defendHero,
+    attackBase: attackBaseV, defenseBase: defenseBaseV, attackDie, defenseDie, won, sacked,
+  });
+  if (attackHero) player.exhausted.push(attackHero);
+  const who = attackHero ? `${player.name}'s ${hero(attackHero).name}` : player.name;
+  const vs = defendHero ? hero(defendHero).name : 'the militia';
+  const score = `${attackBaseV}+${attackDie} vs ${defenseBaseV}+${defenseDie}`;
+  if (!won) {
+    log(state, `${who} is repelled at ${node(id).name} by ${vs} (${score}) — double rent!`);
+    return settleRent(state, player, id, rent * 2, lured);
+  }
+  log(state, `${who} defeats ${vs} at ${node(id).name} (${score}) — no rent paid!`);
+  if (defendHero) {
+    o.hero = null;
+    log(state, `${hero(defendHero).name} falls back to ${owner.name}'s retinue.`);
+  }
+  if (sacked) {
+    const up = o.upgrades.pop()!;
+    returnToStock(state, up);
+    log(state, `${node(id).name} is sacked — its ${upgradeName(up)} lies in ruins.`);
+  }
+  if (!lured) finishLanding(state);
+}
+
+function upgradeName(up: Upgrade): string {
+  if (up.kind === 'settlement') return 'Settlement';
+  if (up.kind === 'garrison') return { guard: 'Guard Post', ogre: 'Ogre camp', drake: 'Drake Roost', tower: 'Arrow Tower' }[up.garrison];
+  return { ward: 'Ward', vault: 'Gilded Vault', trap: 'Snare Trap', beacon: 'Beacon', orb: 'Scrying Orb', academy: 'Academy' }[up.enchant];
 }
 
 /* ------------------------------------------------------------------ */
@@ -370,6 +456,14 @@ function drawFate(state: GameState, player: Player): void {
       break;
     case 'sinkhole': charge(state, player.id, 75, null); break;
     case 'fortune': player.cash += 150; break;
+    case 'cache': {
+      if (player.tactics.length < MAX_TACTICS) {
+        const t = TACTICS[Math.floor(nextRand(state) * TACTICS.length)];
+        player.tactics.push(t.id);
+        log(state, `${player.name} gains a ${t.name} tactic.`);
+      }
+      break;
+    }
   }
   if (player.bankrupt) return;
   finishLanding(state);
@@ -397,6 +491,16 @@ function drawQuest(state: GameState, player: Player): void {
     case 'tithe2': charge(state, player.id, 25, null); break;
     case 'egg': player.cash += 150; break;
     case 'roads': player.cash += 10 * playerProps(state, player.id).length; break;
+    case 'recruit': {
+      const h = state.forHire[0];
+      if (h && player.heroes.length < MAX_HEROES) {
+        state.forHire.shift();
+        player.heroes.push(h);
+        refillForHire(state);
+        log(state, `${hero(h).name}, ${hero(h).title}, joins ${player.name}.`);
+      }
+      break;
+    }
     case 'banners': {
       const sets = (['shire', 'silver', 'wild', 'iron', 'sun', 'mage', 'dragon', 'celest'] as const)
         .filter(r => ownsFullSet(state, player.id, r)).length;
@@ -465,8 +569,10 @@ function beginTurn(state: GameState) {
   if (state.winner !== null) return;
   const player = cur(state);
   player.actionUsed = false;
+  player.tacticUsed = false;
   player.sanctuary = false;
   if (player.abilityCooldown > 0) player.abilityCooldown--;
+  state.closedRoutes = state.closedRoutes.filter(r => r.by !== player.id);
   state.consecutiveDoubles = 0;
   state.phase = 'preroll';
   state.pending = null;
@@ -501,6 +607,7 @@ function endTurn(state: GameState) {
     log(state, `${player.name} rolled doubles and goes again.`);
     return;
   }
+  player.bazaarOpen = false;
 
   // next living player; wrap increments the round
   const n = state.players.length;
@@ -727,10 +834,127 @@ function executeTrade(state: GameState, offer: TradeOffer) {
   const from = P(state, offer.from), to = P(state, offer.to);
   from.cash += offer.getGold - offer.giveGold;
   to.cash += offer.giveGold - offer.getGold;
+  for (const id of [...offer.giveProps, ...offer.getProps]) own(state, id).hero = null;
   for (const id of offer.giveProps) own(state, id).owner = offer.to;
   for (const id of offer.getProps) own(state, id).owner = offer.from;
   state.lastTrade = { ...offer };
   log(state, `${from.name} and ${to.name} strike a bargain.`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Tactics                                                             */
+/* ------------------------------------------------------------------ */
+
+/** Lands of `owner` that `victim` could be lured onto: within LURE_RANGE steps ahead of them. */
+export function lureTargets(state: GameState, owner: PlayerId, victim: PlayerId): NodeId[] {
+  const dist = distancesFrom(P(state, victim).pos, LURE_RANGE);
+  return [...dist.entries()]
+    .filter(([id, d]) => d >= 1 && state.ownership[id]?.owner === owner && !state.ownership[id].mortgaged)
+    .map(([id]) => id);
+}
+
+/** Why player `pid` cannot play `t` at these targets right now, or null (for the UI's pickers). */
+export function tacticBlocker(state: GameState, pid: PlayerId, t: TacticId, target?: PlayerId, at?: NodeId): string | null {
+  return tacticError(state, P(state, pid), t, target, at);
+}
+
+/** Why `caster` cannot play `t` with these targets, or null. Checked before any card is spent. */
+function tacticError(state: GameState, caster: Player, t: TacticId, target?: PlayerId, at?: NodeId): string | null {
+  if (!caster.tactics.includes(t)) return 'you hold no such tactic';
+  if (caster.tacticUsed) return 'one tactic per turn';
+  const def = tactic(t);
+  if (def.hostile) {
+    const victim = target === undefined ? undefined : state.players[target];
+    if (!victim || victim.id === caster.id || victim.bankrupt) return 'choose a rival';
+    if (victim.sanctuary) return `${victim.name} is under Sanctuary`;
+  }
+  switch (t) {
+    case 'feint': return 'a Feint waits in your hand until someone plays a tactic on you';
+    case 'march': return state.phase === 'preroll' && !state.movement ? null : 'march before you roll';
+    case 'rooted': {
+      const v = state.players[target!];
+      if (v.inDungeon) return 'they are already in the Dungeon';
+      if (v.rooted || v.rootImmune) return `${v.name} cannot be Rooted again until they pass the Crossroads`;
+      return null;
+    }
+    case 'lure':
+      if (state.players[target!].inDungeon) return 'they are in the Dungeon';
+      return at && lureTargets(state, caster.id, target!).includes(at) ? null : 'not one of your lands within reach of them';
+    case 'sabotage': {
+      const o = at ? state.ownership[at] : undefined;
+      if (!o || o.owner !== target) return 'choose one of their lands';
+      if (!o.upgrades.length) return 'nothing built there';
+      if (hasEnchant(o, 'ward')) return 'a Ward protects it';
+      return null;
+    }
+    case 'bridge':
+      return at && SHORTCUT_ENTRANCES[at] ? null : 'choose the Ironvein Pass or the Underway';
+  }
+}
+
+function playTactic(state: GameState, caster: Player, t: TacticId, target?: PlayerId, at?: NodeId) {
+  caster.tactics.splice(caster.tactics.indexOf(t), 1);
+  caster.tacticUsed = true;
+  const def = tactic(t);
+
+  if (!def.hostile) {
+    state.fx.push({ type: 'tactic', player: caster.id, tactic: t, target: null, reflected: false, resisted: false });
+    if (t === 'march') {
+      caster.forcedMarch = true;
+      log(state, `${caster.name} plays Forced March — three dice this turn.`);
+    } else if (t === 'bridge') {
+      state.closedRoutes.push({ node: at!, by: caster.id });
+      log(state, `${caster.name} burns the bridge: ${SHORTCUT_ENTRANCES[at!]} is closed until their next turn.`);
+    }
+    return;
+  }
+
+  let victim = P(state, target!);
+  let source = caster;
+  let reflected = false;
+  const feint = victim.tactics.indexOf('feint');
+  if (feint >= 0) {
+    victim.tactics.splice(feint, 1);
+    [victim, source] = [caster, victim];
+    reflected = true;
+  }
+  const resisted = !reflected && nextRand(state) < resistChance(state, caster.id, victim.id);
+  state.fx.push({ type: 'tactic', player: caster.id, tactic: t, target: target!, reflected, resisted });
+  if (reflected) log(state, `${source.name}'s Feint turns ${caster.name}'s ${def.name} back on them!`);
+  if (resisted) {
+    log(state, `${victim.name} sees through ${caster.name}'s ${def.name}.`);
+    return;
+  }
+
+  switch (t) {
+    case 'rooted':
+      victim.rooted = true;
+      log(state, `${victim.name} is Rooted and will not move next turn.`);
+      break;
+    case 'lure': {
+      // a reflected Lure pulls the caster onto the victim's best land in their reach
+      const dest = reflected
+        ? lureTargets(state, source.id, victim.id).sort((a, b) => baseRent(state, b, 7) - baseRent(state, a, 7))[0]
+        : at!;
+      if (!dest) { log(state, `The Lure finds no road for ${victim.name}.`); break; }
+      teleport(state, victim, dest);
+      log(state, `${victim.name} is lured to ${node(dest).name}.`);
+      payRent(state, victim, dest, 7, true);
+      break;
+    }
+    case 'sabotage': {
+      const dest = reflected
+        ? playerProps(state, victim.id)
+          .filter(id => own(state, id).upgrades.length && !hasEnchant(own(state, id), 'ward'))
+          .sort((a, b) => baseRent(state, b, 7) - baseRent(state, a, 7))[0]
+        : at!;
+      if (!dest) { log(state, `The saboteurs find nothing of ${victim.name}'s to burn.`); break; }
+      const up = own(state, dest).upgrades.pop()!;
+      returnToStock(state, up);
+      log(state, `Saboteurs wreck the ${upgradeName(up)} on ${node(dest).name}.`);
+      break;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -810,20 +1034,26 @@ export function applyAction(state: GameState, action: Action): string | null {
         }
         return 'bid or pass';
       }
-      case 'pickpocket': {
-        if (action.type !== 'pickpocket') return 'declare the pickpocket';
+      case 'rentDue': {
+        if (action.type !== 'rentChoice') return 'pay the rent or challenge';
+        const payer = P(state, pend.player);
+        if (action.choice === 'pickpocket' && !pend.canPickpocket) return 'no pickpocket here';
         state.pending = null;
-        if (action.use) {
-          player.abilityCooldown = ABILITY_COOLDOWN;
+        if (action.choice === 'challenge') {
+          challenge(state, payer, pend.node, pend.rent, pend.lured);
+          return null;
+        }
+        if (action.choice === 'pickpocket') {
+          payer.abilityCooldown = ABILITY_COOLDOWN;
           const die = rollDie(state);
           if (die >= 5) {
-            log(state, `${player.name} pickpockets the rent back (rolled ${die}) — pays nothing!`);
-            finishLanding(state);
+            log(state, `${payer.name} pickpockets the rent back (rolled ${die}) — pays nothing!`);
+            if (!pend.lured) finishLanding(state);
             return null;
           }
-          log(state, `${player.name} fumbles the lift (rolled ${die}).`);
+          log(state, `${payer.name} fumbles the lift (rolled ${die}).`);
         }
-        settleRent(state, player, pend.node, pend.rent);
+        settleRent(state, payer, pend.node, pend.rent, pend.lured);
         return null;
       }
       case 'dungeon': {
@@ -923,7 +1153,17 @@ export function applyAction(state: GameState, action: Action): string | null {
     case 'roll': {
       if (state.phase !== 'preroll') return 'not the time to roll';
       if (state.movement) return 'already moving';
+      if (player.rooted) {
+        player.rooted = false;
+        player.rootImmune = true;
+        state.lastRollDouble = false;
+        log(state, `${player.name} is Rooted and cannot move this turn.`);
+        state.phase = 'postroll';
+        return null;
+      }
       const [a, b] = rollDice(state, player);
+      const extra = player.forcedMarch ? rollDie(state) : 0;
+      player.forcedMarch = false;
       state.lastRollDouble = a === b;
       if (a === b) {
         state.consecutiveDoubles++;
@@ -936,20 +1176,70 @@ export function applyAction(state: GameState, action: Action): string | null {
       } else {
         state.consecutiveDoubles = 0;
       }
-      log(state, `${player.name} rolls ${a}+${b}.`);
+      log(state, extra
+        ? `${player.name} rolls ${a}+${b}, and ${extra} more on a Forced March.`
+        : `${player.name} rolls ${a}+${b}.`);
+      const total = a + b + extra;
       if (player.cls === 'ranger') {
-        const total = a + b;
         const options = [...new Set([Math.max(1, total - 1), total, total + 1])];
         state.pending = { type: 'rangerAdjust', player: player.id, rolled: total, options };
         state.movement = { remaining: 0, rolled: [a, b] };
         return null;
       }
-      startMove(state, a + b, [a, b]);
+      startMove(state, total, [a, b]);
       return null;
     }
     case 'endTurn': {
       if (state.phase !== 'postroll') return 'finish your move first';
       endTurn(state);
+      return null;
+    }
+    case 'hireHero': {
+      if (!player.bazaarOpen) return 'the Bazaar is at the Crossroads';
+      if (!state.forHire.includes(action.hero)) return 'not for hire';
+      if (player.heroes.length >= MAX_HEROES) return `you lead ${MAX_HEROES} heroes already`;
+      const h = hero(action.hero);
+      if (player.cash < h.cost) return 'not enough gold';
+      player.cash -= h.cost;
+      player.heroes.push(h.id);
+      state.forHire = state.forHire.filter(x => x !== h.id);
+      refillForHire(state);
+      log(state, `${player.name} hires ${h.name}, ${h.title}, for ${h.cost}g.`);
+      return null;
+    }
+    case 'buyTactic': {
+      if (!player.bazaarOpen) return 'the Bazaar is at the Crossroads';
+      if (player.tactics.length >= MAX_TACTICS) return `your hand holds ${MAX_TACTICS} tactics already`;
+      const t = tactic(action.tactic);
+      if (player.cash < t.price) return 'not enough gold';
+      player.cash -= t.price;
+      player.tactics.push(t.id);
+      log(state, `${player.name} buys a tactic at the Bazaar.`);
+      return null;
+    }
+    case 'stationHero': {
+      if (state.phase !== 'postroll') return 'station heroes after you move';
+      if (!player.heroes.includes(action.hero)) return 'not your hero';
+      const from = Object.entries(state.ownership).find(([, o]) => o.hero === action.hero)?.[0];
+      if (action.node === null) {
+        if (!from) return 'already in your retinue';
+        own(state, from).hero = null;
+        log(state, `${hero(action.hero).name} rejoins ${player.name}'s retinue.`);
+        return null;
+      }
+      const o = state.ownership[action.node];
+      if (!o || node(action.node).type !== 'prop' || o.owner !== player.id) return 'station heroes on your own lands';
+      if (o.hero) return 'a hero already holds it';
+      if (from) own(state, from).hero = null;
+      o.hero = action.hero;
+      log(state, `${hero(action.hero).name} takes up the watch at ${node(action.node).name}.`);
+      return null;
+    }
+    case 'playTactic': {
+      if (state.phase !== 'preroll' && state.phase !== 'postroll') return 'not now';
+      const err = tacticError(state, player, action.tactic, action.target, action.node);
+      if (err) return err;
+      playTactic(state, player, action.tactic, action.target, action.node);
       return null;
     }
     case 'build': {
@@ -1052,4 +1342,7 @@ export function actingPlayer(state: GameState): PlayerId {
 }
 
 /** Internal hooks for the test suite only. */
-export const _test = { resolveLanding, charge, sendToDungeon, crossedCapital };
+export const _test = {
+  resolveLanding, charge, sendToDungeon, crossedCapital,
+  walk: (state: GameState, steps: number) => startMove(state, steps, [1, 2]),
+};

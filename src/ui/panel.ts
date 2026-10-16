@@ -1,6 +1,7 @@
 // Right-hand HUD: round/season, players, dice, buttons, event log.
 
 import { node } from '../engine/board';
+import { hero, tactic } from '../engine/heroes';
 import { netWorth, playerProps } from '../engine/rules';
 import { actingPlayer } from '../engine/engine';
 import type { GameState } from '../engine/types';
@@ -65,7 +66,8 @@ export function renderPanel(root: HTMLElement, state: GameState, human: number, 
       <div class="portrait">${esc(p.name[0])}</div>
       <div class="info">
         <div class="pname">${esc(p.name)} ${flags}</div>
-        <div class="pclass">${CLASS_INFO[p.cls].label}${p.id === human ? ' · you' : ''}${p.bankrupt ? ' · ruined' : ''}</div>
+        <div class="pclass">${CLASS_INFO[p.cls].label}${p.id === human ? ' · you' : ''}${p.bankrupt ? ' · ruined' : ''}
+          ${p.bankrupt ? '' : `<span class="pmeta" title="heroes · tactic cards">⚔${p.heroes.length} ✦${p.tactics.length}${p.rooted ? ' · rooted' : ''}</span>`}</div>
         <div class="chips">${p.bankrupt ? '' : chips(state, p.id)}</div>
       </div>
       <div class="gold" data-gold="${p.id}">${p.bankrupt ? '☠' : cash + 'g'}<small>${p.bankrupt ? '' : 'net ' + worth + 'g'}</small></div>
@@ -96,11 +98,38 @@ export function renderPanel(root: HTMLElement, state: GameState, human: number, 
         <button class="btn ghost" id="btn-trade" ${myTurn && !me.actionUsed && !state.pending && state.winner === null ? '' : 'disabled'}>TRADE</button>
         <button class="btn ghost" id="btn-end" ${postroll ? '' : 'disabled'}>END TURN</button>
       </div>
+      ${me.bazaarOpen && (preroll || postroll)
+        ? '<button class="btn bazaar-btn" id="btn-bazaar">⚑ CROSSROADS BAZAAR <small>heroes &amp; tactics for sale this turn</small></button>' : ''}
     </div>
+    ${bandHtml(state, human, (preroll || postroll) && !me.tacticUsed)}
     ${waitNote}
     <div class="log">${events.map(e =>
       `<p class="${e.id > view.freshAfter ? 'fresh' : ''}"><span class="lr">r${e.round}</span> ${esc(e.text)}</p>`).join('')}</div>
   `;
+}
+
+/** Your heroes (with where they are) and your hand of tactic cards. */
+function bandHtml(state: GameState, human: number, canPlay: boolean): string {
+  const me = state.players[human];
+  if (me.bankrupt) return '';
+  const posts = new Map(Object.entries(state.ownership).filter(([, o]) => o.hero).map(([id, o]) => [o.hero!, id]));
+  const heroes = me.heroes.map(h => {
+    const d = hero(h);
+    const post = posts.get(h);
+    const where = post ? `guards ${node(post).name}` : me.exhausted.includes(h) ? 'exhausted' : 'ready to fight';
+    return `<span class="band-hero ${post ? 'posted' : me.exhausted.includes(h) ? 'tired' : ''}" title="${esc(d.title)}">
+      <span class="portrait">${esc(d.name[0])}</span>
+      <span><b>${esc(d.name)}</b><small>M${d.might} · W${d.wits} · ${esc(where)}</small></span>
+    </span>`;
+  }).join('') || '<small class="band-empty">No heroes — hire them at the Crossroads Bazaar.</small>';
+  const cards = me.tactics.map(t => `
+    <button class="band-tactic" data-tactic="${t}" ${canPlay && t !== 'feint' ? '' : 'disabled'}
+      title="${esc(tactic(t).text)}">✦ ${esc(tactic(t).name)}</button>`).join('');
+  return `<div class="band">
+    <h5>YOUR BAND</h5>
+    <div class="band-heroes">${heroes}</div>
+    ${cards ? `<div class="band-tactics">${cards}</div>` : ''}
+  </div>`;
 }
 
 /** Set a rendered die's face in place (used by the roll animation). */

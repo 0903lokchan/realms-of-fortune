@@ -2,13 +2,16 @@
 // Simple valuation heuristics with per-class personality weights — see DESIGN.md §9.
 
 import { BOARD, distancesFrom, node, regionProps, WAYGATES } from '../engine/board';
-import { actingPlayer } from '../engine/engine';
+import { actingPlayer, lureTargets } from '../engine/engine';
+import { hero, tactic } from '../engine/heroes';
 import {
-  baseRent, buildError, garrison, netWorth, own, ownsFullSet, playerProps, settlementTiers,
+  attackBase, baseRent, buildError, champion, defenseBase, garrison, hasEnchant, netWorth, own, ownsFullSet,
+  playerProps, resistChance, settlementTiers, winChance,
 } from '../engine/rules';
 import type {
-  Action, ClassId, EnchantType, GameState, NodeId, Player, Region, Upgrade,
+  Action, ClassId, EnchantType, GameState, HeroId, NodeId, Player, Region, TacticId, Upgrade,
 } from '../engine/types';
+import { MAX_HEROES, MAX_TACTICS } from '../engine/types';
 
 export type Difficulty = 'squire' | 'knight' | 'warlord';
 
@@ -19,16 +22,22 @@ interface Personality {
   garrisonWeight: number;
   cashBuffer: number;       // gold kept in reserve
   riskTolerance: number;    // shortcut / dangerous-route appetite
+  /** Challenges when the expected cost (1 − P(win)) × 2 × rent is below rent × aggression. */
+  aggression: number;
+  /** Weight on Might (vs Wits) when judging heroes. */
+  mightPref: number;
 }
 
 const PERSONALITIES: Partial<Record<ClassId, Personality>> = {
-  merchant:    { buyEagerness: 1.15, settlementWeight: 1.5, enchantWeight: 0.6, garrisonWeight: 0.5, cashBuffer: 140, riskTolerance: 0.3 },
-  rogue:       { buyEagerness: 1.0,  settlementWeight: 0.7, enchantWeight: 0.9, garrisonWeight: 0.6, cashBuffer: 220, riskTolerance: 0.6 },
-  wizard:      { buyEagerness: 1.05, settlementWeight: 0.8, enchantWeight: 1.6, garrisonWeight: 0.5, cashBuffer: 180, riskTolerance: 0.5 },
-  warrior:     { buyEagerness: 1.1,  settlementWeight: 0.9, enchantWeight: 0.5, garrisonWeight: 1.6, cashBuffer: 90,  riskTolerance: 0.9 },
+  merchant: { buyEagerness: 1.15, settlementWeight: 1.5, enchantWeight: 0.6, garrisonWeight: 0.5, cashBuffer: 140, riskTolerance: 0.3, aggression: 0.9, mightPref: 0.4 },
+  rogue:    { buyEagerness: 1.0,  settlementWeight: 0.7, enchantWeight: 0.9, garrisonWeight: 0.6, cashBuffer: 220, riskTolerance: 0.6, aggression: 0.8, mightPref: 0.4 },
+  wizard:   { buyEagerness: 1.05, settlementWeight: 0.8, enchantWeight: 1.6, garrisonWeight: 0.5, cashBuffer: 180, riskTolerance: 0.5, aggression: 0.9, mightPref: 0.3 },
+  warrior:  { buyEagerness: 1.1,  settlementWeight: 0.9, enchantWeight: 0.5, garrisonWeight: 1.6, cashBuffer: 90,  riskTolerance: 0.9, aggression: 1.25, mightPref: 0.85 },
 };
-const DEFAULT_PERSONALITY: Personality =
-  { buyEagerness: 1, settlementWeight: 1, enchantWeight: 1, garrisonWeight: 1, cashBuffer: 150, riskTolerance: 0.5 };
+const DEFAULT_PERSONALITY: Personality = {
+  buyEagerness: 1, settlementWeight: 1, enchantWeight: 1, garrisonWeight: 1, cashBuffer: 150, riskTolerance: 0.5,
+  aggression: 1, mightPref: 0.5,
+};
 
 function persona(p: Player): Personality {
   return PERSONALITIES[p.cls] ?? DEFAULT_PERSONALITY;
@@ -95,6 +104,8 @@ function bestBuild(state: GameState, p: Player): { node: NodeId; upgrade: Upgrad
       candidates.push({ up: { kind: 'enchant', enchant: e }, score: 60 * per.enchantWeight * (e === 'vault' ? 1.3 : 1) });
     }
     candidates.push({ up: { kind: 'garrison', garrison: 'ogre' }, score: n.price! * 0.45 * per.garrisonWeight });
+    candidates.push({ up: { kind: 'garrison', garrison: 'tower' }, score: n.price! * 0.4 * per.garrisonWeight });
+    candidates.push({ up: { kind: 'enchant', enchant: 'academy' }, score: 70 * per.enchantWeight });
     for (const c of candidates) {
       if (buildError(state, p, id, c.up)) continue;
       if (!best || c.score > best.score) best = { node: id, upgrade: c.up, score: c.score };
@@ -137,6 +148,149 @@ function abilityAction(state: GameState, p: Player): Action | null {
     default:
       return null;
   }
+}
+
+/* ---------------- heroes, challenges, tactics ---------------- */
+
+function heroScore(p: Player, h: HeroId): number {
+  const mp = persona(p).mightPref;
+  return hero(h).might * mp + hero(h).wits * (1 - mp);
+}
+
+/**
+ * Pay, challenge, or pickpocket. A challenge exhausts the fighting hero for the rest of the lap,
+ * so it must save more than keeping that hero rested for a bigger toll is worth.
+ */
+function rentChoice(state: GameState, p: Player, land: NodeId, rent: number, canPickpocket: boolean): Action {
+  const win = winChance(attackBase(state, p.id), defenseBase(state, land));
+  const challengeSaving = rent - (1 - win) * 2 * rent;
+  const biggestToll = Math.max(0, ...Object.keys(state.ownership)
+    .filter(id => { const o = own(state, id); return o.owner !== null && o.owner !== p.id && !o.mortgaged; })
+    .map(id => baseRent(state, id, 7)));
+  const restedHeroWorth = champion(state, p.id) ? 30 + 0.25 * biggestToll : 0;
+  const affordable = rent * 2 <= p.cash || win >= 0.75;
+
+  const options: Array<{ choice: 'pay' | 'challenge' | 'pickpocket'; gain: number }> = [{ choice: 'pay', gain: 0 }];
+  if (canPickpocket && rent >= 40) options.push({ choice: 'pickpocket', gain: rent / 3 - 15 });
+  if (affordable) options.push({ choice: 'challenge', gain: challengeSaving * persona(p).aggression - restedHeroWorth });
+  options.sort((a, b) => b.gain - a.gain);
+  return { type: 'rentChoice', choice: options[0].choice };
+}
+
+/** Hire or buy at the Bazaar while it's open and it fits the budget. */
+function bazaarAction(state: GameState, p: Player, buffer: number): Action | null {
+  if (!p.bazaarOpen) return null;
+  const spare = p.cash - buffer;
+  if (p.heroes.length < MAX_HEROES && (p.heroes.length < 2 || spare > 450)) {
+    const pick = state.forHire
+      .filter(h => hero(h).cost <= spare)
+      .sort((a, b) => heroScore(p, b) - heroScore(p, a))[0];
+    const weakest = Math.min(...p.heroes.map(h => heroScore(p, h)));
+    if (pick && (p.heroes.length === 0 || heroScore(p, pick) >= weakest)) {
+      return { type: 'hireHero', hero: pick };
+    }
+  }
+  // a Feint waits in hand for a rival's move, so only playable cards count toward "holding one"
+  const playable = p.tactics.filter(t => t !== 'feint');
+  if (p.tactics.length < MAX_TACTICS) {
+    const developed = playerProps(state, p.id).some(id => baseRent(state, id, 7) >= 60);
+    const rivalBuilt = state.players.some(r => r.id !== p.id && !r.bankrupt
+      && playerProps(state, r.id).some(id => own(state, id).upgrades.length > 0));
+    const wish: TacticId[] = [];
+    if (!playable.length) {
+      if (developed) wish.push('lure');
+      if (rivalBuilt) wish.push('sabotage');
+      if (farBehind(state, p)) wish.push('rooted');
+    }
+    if (!p.tactics.includes('feint')) wish.push('feint');
+    const t = wish.find(w => tactic(w).price + 100 <= spare);
+    if (t) return { type: 'buyTactic', tactic: t };
+  }
+  return null;
+}
+
+/** Keep the strongest fighter in the retinue; station the rest on the richest lands. */
+function stationAction(state: GameState, p: Player): Action | null {
+  if (state.phase !== 'postroll') return null;
+  // Rank by rent before any hero bonus: stationing a hero raises its land's rent, and ranking
+  // on that would make the hero look better placed elsewhere and shuttle between lands forever.
+  const worth = (id: NodeId) => baseRent(state, id, 7, false);
+  const lands = playerProps(state, p.id)
+    .filter(id => node(id).type === 'prop' && !own(state, id).mortgaged)
+    .sort((a, b) => worth(b) - worth(a) || a.localeCompare(b));
+  const byMight = [...p.heroes].sort((a, b) => hero(b).might - hero(a).might);
+  const keepOne = p.heroes.length >= 2 || persona(p).aggression >= 1.1
+    || !lands.some(id => settlementTiers(own(state, id)) >= 1);
+  const toStation = keepOne ? byMight.slice(1) : byMight;
+  const desired = new Map<HeroId, NodeId | null>(p.heroes.map(h => [h, null]));
+  toStation.forEach((h, i) => { if (lands[i]) desired.set(h, lands[i]); });
+
+  const at = (h: HeroId) => Object.entries(state.ownership).find(([, o]) => o.hero === h)?.[0] ?? null;
+  for (const [h, want] of desired) {
+    const now = at(h);
+    if (now === want) continue;
+    if (want === null) return { type: 'stationHero', hero: h, node: null };
+    const occupant = own(state, want).hero;
+    if (occupant && occupant !== h) return { type: 'stationHero', hero: occupant, node: null };
+    return { type: 'stationHero', hero: h, node: want };
+  }
+  return null;
+}
+
+function leader(state: GameState, p: Player): Player | undefined {
+  return state.players
+    .filter(r => r.id !== p.id && !r.bankrupt)
+    .sort((a, b) => netWorth(state, b) - netWorth(state, a))[0];
+}
+
+/** The leading rival is well ahead (worth 25% more) and not already Rooted this lap. */
+function farBehind(state: GameState, p: Player): boolean {
+  const top = leader(state, p);
+  return !!top && !top.rooted && !top.rootImmune && netWorth(state, top) > netWorth(state, p) * 1.25;
+}
+
+function tacticAction(state: GameState, p: Player): Action | null {
+  if (p.tacticUsed || !p.tactics.length) return null;
+  const rivals = state.players.filter(r => r.id !== p.id && !r.bankrupt && !r.sanctuary);
+  const fair = (r: Player) => resistChance(state, p.id, r.id) <= 0.3;
+
+  if (p.tactics.includes('lure')) {
+    let best: { target: number; node: NodeId; rent: number } | null = null;
+    for (const r of rivals.filter(r => !r.inDungeon && fair(r))) {
+      for (const id of lureTargets(state, p.id, r.id)) {
+        const rent = baseRent(state, id, 7);
+        if (rent >= 80 && (!best || rent > best.rent)) best = { target: r.id, node: id, rent };
+      }
+    }
+    if (best) return { type: 'playTactic', tactic: 'lure', target: best.target, node: best.node };
+  }
+  if (p.tactics.includes('sabotage')) {
+    let best: { target: number; node: NodeId; rent: number } | null = null;
+    for (const r of rivals.filter(fair)) {
+      for (const id of playerProps(state, r.id)) {
+        const o = own(state, id);
+        if (!o.upgrades.length || hasEnchant(o, 'ward')) continue;
+        const rent = baseRent(state, id, 7);
+        if (rent >= 100 && (!best || rent > best.rent)) best = { target: r.id, node: id, rent };
+      }
+    }
+    if (best) return { type: 'playTactic', tactic: 'sabotage', target: best.target, node: best.node };
+  }
+  const top = leader(state, p);
+  if (p.tactics.includes('rooted') && top && farBehind(state, p) && !top.sanctuary && !top.inDungeon && fair(top)) {
+    return { type: 'playTactic', tactic: 'rooted', target: top.id };
+  }
+  if (p.tactics.includes('march') && state.phase === 'preroll' && !state.movement) {
+    return { type: 'playTactic', tactic: 'march' };
+  }
+  if (p.tactics.includes('bridge')) {
+    for (const [fork, entrance] of [['quay', 'rockfall'], ['sunspire', 'gull']] as const) {
+      if (rivals.some(r => (distancesFrom(r.pos, 6).get(fork) ?? 99) <= 6)) {
+        return { type: 'playTactic', tactic: 'bridge', node: entrance };
+      }
+    }
+  }
+  return null;
 }
 
 const REGIONS: Region[] = ['shire', 'silver', 'wild', 'iron', 'sun', 'mage', 'dragon', 'celest'];
@@ -211,8 +365,8 @@ export function decide(state: GameState, difficulty: Difficulty = 'knight'): Act
         if (next <= cap && a.leader !== p.id) return { type: 'bid', amount: next };
         return { type: 'passBid' };
       }
-      case 'pickpocket':
-        return { type: 'pickpocket', use: pend.rent >= 40 };
+      case 'rentDue':
+        return rentChoice(state, p, pend.node, pend.rent, pend.canPickpocket);
       case 'dungeon': {
         if (p.cls === 'warrior') return { type: 'dungeonChoice', choice: 'fight' };
         if (p.writs > 0) return { type: 'dungeonChoice', choice: 'writ' };
@@ -241,6 +395,13 @@ export function decide(state: GameState, difficulty: Difficulty = 'knight'): Act
       }
     }
   }
+
+  const shop = bazaarAction(state, p, buffer);
+  if (shop) return shop;
+  const station = stationAction(state, p);
+  if (station) return station;
+  const play = tacticAction(state, p);
+  if (play) return play;
 
   if (state.phase === 'preroll') {
     const ability = abilityAction(state, p);

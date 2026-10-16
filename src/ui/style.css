@@ -368,3 +368,120 @@ svg text{font-family:'Alegreya',serif}
   animation:toastin .18s ease-out;
 }
 @keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ============ heroes, challenges, tactics ============ */
+.pmeta{margin-left:6px;font-style:normal;font-size:10px;color:var(--text-dim);letter-spacing:.5px}
+
+/* pay-or-challenge */
+.duel-card{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;margin-top:14px}
+.duel-side{background:#0d1119;border:1px solid #3a4257;border-radius:6px;padding:10px;display:flex;flex-direction:column;
+  align-items:center;gap:3px;text-align:center;border-top:3px solid var(--pc)}
+.duel-side .portrait{width:38px;height:38px;font-size:16px}
+.duel-side b{font-family:'Cinzel',serif;font-size:12.5px;color:#efe6cb}
+.duel-side small{font-style:italic;color:var(--text-dim);font-size:11px;min-height:13px}
+.duel-label{font-family:'Cinzel',serif;font-size:9.5px;letter-spacing:1.5px;color:var(--text-dim)}
+.duel-parts{font-size:11px;color:#b5ab8f}
+.duel-total{font-family:'Cinzel',serif;font-weight:900;color:var(--gold);font-size:15px}
+.duel-vs{display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Cinzel',serif;
+  color:var(--text-dim);font-size:11px;letter-spacing:2px}
+.duel-vs b{font-size:26px;color:var(--gold);letter-spacing:0;text-shadow:0 0 14px rgba(232,201,106,.4)}
+.duel-terms{margin-top:10px;font-size:12.5px;text-align:center;color:#b5ab8f;line-height:1.4}
+.duel-terms b{color:#e07a62}
+.duel-terms.warn{color:#f0b060;font-style:italic}
+@media(max-width:520px){.duel-card{grid-template-columns:1fr}.duel-vs{flex-direction:row;gap:8px}}
+
+/* property sheet: defense */
+.guard{margin-top:16px;border-top:1px solid #3a425788;padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.guard h5{font-family:'Cinzel',serif;font-size:11px;letter-spacing:1.5px;color:var(--gold)}
+.guard h5 small{font-family:'Alegreya',serif;letter-spacing:0;color:var(--text-dim);font-style:italic;margin-left:4px}
+.guard-line{font-size:12.5px;color:#cfc6ab;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.guard-line b{color:#efe6cb}
+
+/* bazaar */
+.dialog.bazaar{max-width:720px}
+.sec{font-family:'Cinzel',serif;font-size:11px;letter-spacing:2px;color:var(--gold);margin:16px 0 8px}
+.sec small{font-family:'Alegreya',serif;letter-spacing:0;color:var(--text-dim);font-style:italic;margin-left:6px}
+.hire-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:600px){.hire-grid{grid-template-columns:1fr}}
+.hire-card{background:#0d1119;border:1px solid #3a4257;border-radius:6px;padding:10px;display:flex;flex-direction:column;
+  align-items:center;gap:4px;text-align:center}
+.hire-card .portrait{width:40px;height:40px;font-size:17px}
+.hire-card b{font-family:'Cinzel',serif;font-size:12.5px;color:#efe6cb}
+.hire-card small{font-style:italic;color:var(--text-dim);font-size:11px;margin-bottom:3px}
+.hire-card .btn{margin-top:6px;width:100%}
+.stat{display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;color:var(--text-dim)}
+.pips{display:inline-flex;gap:2px}
+.pips i{width:7px;height:7px;border-radius:2px;display:inline-block}
+.pips.might i{background:#e07a62}
+.pips.wits i{background:#a98fe0}
+.pips i.off{background:#262c3b}
+.tactic-list{display:flex;flex-direction:column;gap:6px}
+.tactic-row{display:flex;align-items:center;gap:10px;background:#0d1119;border:1px solid #3a4257;border-radius:6px;padding:8px 10px}
+.tcard{width:26px;height:34px;border-radius:4px;flex:none;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 30%, #3d2a5e, #1c1230);border:1px solid #8f6fd0;color:#c9aef5;font-size:13px}
+.tinfo{flex:1;display:flex;flex-direction:column;font-size:12.5px;color:#efe6cb}
+.tinfo b{font-family:'Cinzel',serif;font-size:12px}
+.tinfo small{color:var(--text-dim);font-style:italic;font-size:11.5px}
+.classic{font-family:serif;color:#c9aef5;font-size:12px;margin-left:4px}
+
+/* tactic hand */
+.hand{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+@media(max-width:560px){.hand{grid-template-columns:1fr}}
+.hand-card{background:radial-gradient(circle at 50% 18%, #3d2a5e, #1c1230 75%);border:1px solid #8f6fd0;border-radius:8px;
+  padding:14px 10px;display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;cursor:pointer;
+  box-shadow:0 0 14px rgba(143,111,208,.25)}
+.hand-card:hover{box-shadow:0 0 22px rgba(143,111,208,.5)}
+.hand-card b{font-family:'Cinzel',serif;color:#e6d5ff;letter-spacing:1px}
+.hand-card small{color:#cbbde6;font-size:11.5px;line-height:1.35}
+
+/* panel: your band */
+.btn.bazaar-btn{background:linear-gradient(#5fd0a0,#2f9a6e 45%,#1f7552);color:#04140c;
+  box-shadow:inset 0 1px 0 #fff6, 0 0 16px rgba(95,208,160,.35), 0 3px 0 #0f3a28}
+.band{border-top:1px solid #55462088;padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.band h5{font-family:'Cinzel',serif;font-size:10.5px;letter-spacing:2px;color:var(--gold)}
+.band-heroes{display:flex;flex-direction:column;gap:4px}
+.band-hero{display:flex;align-items:center;gap:8px;font-size:12px}
+.band-hero .portrait{width:26px;height:26px;font-size:11px;--pc:#7a8aa8;border-width:1.5px}
+.band-hero b{font-family:'Cinzel',serif;font-size:11.5px;color:#efe6cb;display:block}
+.band-hero small{color:var(--text-dim);font-size:10.5px}
+.band-hero.posted .portrait{--pc:#4f8ef0}
+.band-hero.tired{opacity:.55}
+.band-empty{color:var(--text-dim);font-style:italic}
+.band-tactics{display:flex;flex-wrap:wrap;gap:5px}
+.band-tactic{font-family:'Cinzel',serif;font-size:10.5px;letter-spacing:.5px;padding:5px 9px;border-radius:12px;cursor:pointer;
+  background:linear-gradient(#3d2a5e,#241838);border:1px solid #8f6fd0;color:#e6d5ff}
+.band-tactic:hover:not(:disabled){box-shadow:0 0 10px rgba(143,111,208,.5)}
+.band-tactic:disabled{opacity:.45;cursor:not-allowed}
+
+/* duel & tactic reveals over the map */
+#clash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:6}
+.clash,.tactic-reveal{
+  background:linear-gradient(rgba(16,20,31,.96),rgba(10,13,21,.96));border:1px solid var(--gold-deep);border-radius:8px;
+  box-shadow:0 0 0 1px #06070b, 0 12px 50px rgba(0,0,0,.8);padding:16px 22px;
+  display:flex;flex-direction:column;align-items:center;gap:10px;animation:clashin ease-out both;
+}
+@keyframes clashin{0%{opacity:0;transform:scale(.85)}10%{opacity:1;transform:scale(1)}88%{opacity:1}100%{opacity:0}}
+.clash-title{font-family:'Cinzel',serif;font-size:11px;letter-spacing:2.5px;color:var(--text-dim)}
+.clash-row{display:flex;align-items:center;gap:18px}
+.clash-vs{font-size:26px;color:var(--gold);text-shadow:0 0 14px rgba(232,201,106,.6)}
+.clash-side{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:130px;transition:transform .2s}
+.clash-side .portrait{width:46px;height:46px;font-size:19px}
+.clash-side b{font-family:'Cinzel',serif;color:#efe6cb;font-size:13px}
+.clash-side small{color:var(--text-dim);font-style:italic;font-size:11px}
+.clash-sum{font-family:'Cinzel',serif;font-weight:900;font-size:16px;color:var(--gold)}
+.clash-die{display:inline-block;min-width:16px;color:#fdf6e3}
+.clash-side.victor{transform:scale(1.12)}
+.clash-side.victor .portrait{box-shadow:0 0 22px var(--pc), 0 0 4px #fff}
+.clash-verdict{font-family:'Cinzel',serif;font-weight:900;letter-spacing:2px;font-size:15px;min-height:20px}
+.clash-verdict.won{color:#8fd0a0;text-shadow:0 0 12px rgba(143,208,160,.5)}
+.clash-verdict.lost{color:#e07a62;text-shadow:0 0 12px rgba(224,122,98,.5)}
+.tactic-reveal{border-color:#8f6fd0;box-shadow:0 0 40px rgba(143,111,208,.45), 0 12px 50px rgba(0,0,0,.8)}
+.tr-card{width:120px;height:150px;border-radius:9px;border:2px solid #8f6fd0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px;background:radial-gradient(circle at 50% 25%, #3d2a5e, #1c1230 75%);
+  animation:flip .5s ease-out both}
+@keyframes flip{from{transform:rotateY(90deg)}to{transform:rotateY(0)}}
+.tr-classic{font-family:serif;font-size:22px;color:#c9aef5;letter-spacing:2px}
+.tr-card b{font-family:'Cinzel',serif;color:#e6d5ff;font-size:12px;letter-spacing:1.5px;text-align:center}
+.tr-line{font-style:italic;color:#e6d8b5;font-size:13.5px}
+.tr-outcome{font-family:'Cinzel',serif;font-weight:900;color:#f0b060;letter-spacing:2px;font-size:14px}
+@media (prefers-reduced-motion: reduce){.clash,.tactic-reveal,.tr-card{animation-name:fade-only}}

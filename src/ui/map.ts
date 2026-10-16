@@ -2,6 +2,7 @@
 // build once; a dynamic layer (ownership, upgrades, tokens, markers) redraws per state.
 
 import { BOARD, node } from '../engine/board';
+import { hero } from '../engine/heroes';
 import { garrison, hasEnchant, own, settlementTiers } from '../engine/rules';
 import type { GameState, NodeId } from '../engine/types';
 import { REGION_COLORS, SEAT_COLORS } from './theme';
@@ -317,6 +318,17 @@ export function updateMap(dyn: SVGGElement, state: GameState) {
         'text-anchor': 'end', class: 'cursemark',
       }).textContent = '☠';
     }
+    if (o.hero && o.owner !== null) {
+      const hx = p.x - r * 0.95, hy = p.y + r * 0.95;
+      el(dyn, 'use', {
+        href: '#i-shield', x: hx - 8, y: hy - 8, width: 16, height: 16,
+        fill: SEAT_COLORS[o.owner], stroke: '#f0e6cc', 'stroke-width': 1.5, filter: 'url(#glow)',
+      });
+      el(dyn, 'text', {
+        x: hx, y: hy + 2.6, 'text-anchor': 'middle', 'font-size': 7.5, 'font-weight': 700, fill: '#fdf6e3',
+        style: 'font-family:Cinzel,serif;pointer-events:none',
+      }).textContent = hero(o.hero).name[0];
+    }
     if (o.upgrades.length) {
       const w = 12;
       o.upgrades.forEach((up, j) => {
@@ -325,6 +337,17 @@ export function updateMap(dyn: SVGGElement, state: GameState) {
         el(dyn, 'use', { href: '#' + icon, x: x0, y: p.y - r - 16, width: w, height: w, fill: '#f7ead0', filter: 'url(#glow)' });
       });
     }
+  }
+  // burned bridges: a red cross on the road into the closed shortcut
+  for (const r of state.closedRoutes) {
+    const fork = [...BOARD.values()].find(n => n.out.includes(r.node))!;
+    const a = POS[fork.id], b = POS[r.node];
+    const mx = a.x + (b.x - a.x) * 0.45, my = a.y + (b.y - a.y) * 0.45;
+    el(dyn, 'circle', { cx: mx, cy: my, r: 10, fill: '#3a1010', stroke: '#e05038', 'stroke-width': 2, filter: 'url(#glow)' });
+    el(dyn, 'text', {
+      x: mx, y: my + 4.5, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 900, fill: '#ff8a70',
+      style: 'pointer-events:none',
+    }).textContent = '✕';
   }
 }
 

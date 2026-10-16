@@ -19,6 +19,7 @@ export const FATE_CARDS: CardDef[] = [
   { id: 'busking',   name: 'Feast Day',        text: 'Every rival pays you 10g.' },
   { id: 'sinkhole',  name: 'Sinkhole',         text: 'The road swallows your purse. Lose 75g.' },
   { id: 'fortune',   name: "Seer's Fortune",   text: 'A glimpse of golden days. Collect 150g.' },
+  { id: 'cache',     name: 'Spoils of War',    text: 'A war chest of stratagems: gain a random tactic card.' },
 ];
 
 export const QUEST_CARDS: CardDef[] = [
@@ -32,6 +33,7 @@ export const QUEST_CARDS: CardDef[] = [
   { id: 'banners',   name: 'Banners Raised',   text: 'Collect 100g for each full region you rule.' },
   { id: 'egg',       name: 'Dragon Egg',       text: 'A collector pays handsomely. Collect 150g.' },
   { id: 'roads',     name: 'Kept Roads',       text: 'Collect 10g for each land you own.' },
+  { id: 'recruit',   name: 'A Wandering Hero', text: 'The first hero for hire joins you for free.' },
 ];
 
 export const CARD_BY_ID: Map<string, CardDef> = new Map(

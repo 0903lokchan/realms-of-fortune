@@ -7,7 +7,7 @@ import type { GameState } from '../engine/types';
 
 const KEY = 'rof.save';
 /** Bump when GameState changes shape; older saves are then discarded. */
-const VERSION = 1;
+const VERSION = 2;
 
 export interface SaveGame {
   version: number;

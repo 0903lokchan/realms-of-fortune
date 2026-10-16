@@ -2,10 +2,13 @@
 // the trade builder, and the endgame screen.
 
 import { distancesFrom, node, regionProps } from '../engine/board';
+import { hero } from '../engine/heroes';
 import {
-  baseRent, buildError, mortgageValue, netWorth, own, playerProps, unmortgageCost, upgradeCost, upgradeSaleValue,
+  attackBase, baseRent, buildError, champion, defenseBase, garrison, hasEnchant, mortgageValue, netWorth, own,
+  playerProps, retinue, settlementTiers, stationedWits, unmortgageCost, upgradeCost, upgradeSaleValue, winChance,
 } from '../engine/rules';
-import type { Action, GameState, NodeId, Upgrade } from '../engine/types';
+import type { Action, GameState, HeroId, NodeId, Upgrade } from '../engine/types';
+import { CHAMPION_MIGHT, MILITIA_MIGHT, SACK_MARGIN, WITS_RENT_BONUS } from '../engine/types';
 import { CLASS_INFO, esc, REGION_COLORS, REGION_NAMES, SEAT_COLORS } from './theme';
 import { previewFor, type Landing } from './preview';
 
@@ -32,6 +35,37 @@ function landingLines(landings: Landing[], key: string): string {
 function toneOf(landings: Landing[], key: string): string {
   const mine = landings.filter(l => l.key === key);
   return mine.length === 1 ? mine[0].tone : 'neutral';
+}
+
+/** One side of a challenge: who fights and how their strength adds up. */
+function sideHtml(label: string, color: string, heroId: HeroId | null, parts: string[], total: number): string {
+  const h = heroId ? hero(heroId) : null;
+  return `<div class="duel-side" style="--pc:${color}">
+    <span class="duel-label">${label}</span>
+    <span class="portrait">${h ? esc(h.name[0]) : '⚑'}</span>
+    <b>${h ? esc(h.name) : parts[0].startsWith('Militia') ? 'Town militia' : 'You, alone'}</b>
+    <small>${h ? esc(h.title) : ''}</small>
+    <span class="duel-parts">${parts.map(esc).join(' · ')}</span>
+    <span class="duel-total">${total} + d6</span>
+  </div>`;
+}
+
+export function attackParts(state: GameState, pid: number): string[] {
+  const h = champion(state, pid);
+  const parts = [h ? `Might ${hero(h).might}` : `Alone ${CHAMPION_MIGHT}`];
+  if (state.players[pid].cls === 'warrior') parts.push('Warrior +2');
+  return parts;
+}
+
+export function defenseParts(state: GameState, id: NodeId): string[] {
+  const o = own(state, id);
+  const might = o.hero ? hero(o.hero).might : 0;
+  const parts = [might > MILITIA_MIGHT ? `Might ${might}` : `Militia ${MILITIA_MIGHT}`];
+  const tiers = settlementTiers(o);
+  if (tiers) parts.push(`Settlements +${2 * tiers}`);
+  const g = garrison(o);
+  if (g) parts.push(`${{ guard: 'Guard Post +1', ogre: 'Ogre +2', drake: 'Drake +3', tower: 'Arrow Tower +3' }[g]}`);
+  return parts;
 }
 
 /** `docked` dialogs sit at the bottom over a light backdrop so the map stays readable. */
@@ -119,15 +153,33 @@ export function pendingDialog(state: GameState, human: number, dispatch: Dispatc
       wrap.querySelector('#d-abandon')!.addEventListener('click', () => dispatch({ type: 'passBid' }));
       return wrap;
     }
-    case 'pickpocket': {
-      wrap.innerHTML = dialog('Pickpocket?',
-        `${p.rent}g rent is due at ${esc(node(p.node).name)}. Roll a d6 — on 5–6 you pay nothing. Costs your ability (3-turn cooldown).`,
-        `<div class="foot">
-          <button class="btn secondary" id="d-yes">TRY THE LIFT</button>
-          <button class="btn ghost" id="d-no">JUST PAY</button>
+    case 'rentDue': {
+      const owner = state.players[p.owner];
+      const atk = attackBase(state, human);
+      const def = defenseBase(state, p.node);
+      const odds = Math.round(winChance(atk, def) * 100);
+      const fighter = champion(state, human);
+      const tired = me.heroes.length > 0 && !fighter;
+      const o = own(state, p.node);
+      wrap.innerHTML = dialog(
+        p.lured ? `Lured to ${esc(node(p.node).name)}!` : `${esc(owner.name)}'s ${esc(node(p.node).name)}`,
+        `Rent due: <b>${p.rent}g</b> — pay it, or fight for the land`,
+        `<div class="duel-card">
+          ${sideHtml('YOUR CHALLENGER', SEAT_COLORS[human], fighter, attackParts(state, human), atk)}
+          <div class="duel-vs">VS<b>${odds}%</b><small>to win</small></div>
+          ${sideHtml(`${esc(owner.name.toUpperCase())}'S DEFENSE`, SEAT_COLORS[owner.id], o.hero, defenseParts(state, p.node), def)}
+        </div>
+        <p class="duel-terms">Win: pay nothing${o.upgrades.length && !hasEnchant(o, 'ward') ? `, and win by ${SACK_MARGIN}+ to sack its newest upgrade` : ''}.
+          Lose: pay <b>${p.rent * 2}g</b>.${fighter ? ` ${esc(hero(fighter).name)} will be exhausted until you pass the Crossroads.` : ''}</p>
+        ${tired ? '<p class="duel-terms warn">Your heroes are exhausted (or stationed); you would fight alone.</p>' : ''}
+        <div class="foot">
+          <button class="btn ghost" id="d-pay">PAY ${p.rent}g</button>
+          <button class="btn danger" id="d-fight">⚔ CHALLENGE</button>
+          ${p.canPickpocket ? '<button class="btn secondary" id="d-pick">PICKPOCKET <small>5–6 on a d6 pays nothing</small></button>' : ''}
         </div>`);
-      wrap.querySelector('#d-yes')!.addEventListener('click', () => dispatch({ type: 'pickpocket', use: true }));
-      wrap.querySelector('#d-no')!.addEventListener('click', () => dispatch({ type: 'pickpocket', use: false }));
+      wrap.querySelector('#d-pay')!.addEventListener('click', () => dispatch({ type: 'rentChoice', choice: 'pay' }));
+      wrap.querySelector('#d-fight')!.addEventListener('click', () => dispatch({ type: 'rentChoice', choice: 'challenge' }));
+      wrap.querySelector('#d-pick')?.addEventListener('click', () => dispatch({ type: 'rentChoice', choice: 'pickpocket' }));
       return wrap;
     }
     case 'dungeon': {
@@ -217,6 +269,8 @@ export function propertySheet(
       { up: { kind: 'garrison', garrison: 'guard' }, label: 'Guard Post — stops pickpockets', icon: 'i-shield' },
       { up: { kind: 'garrison', garrison: 'ogre' }, label: 'Ogre — rent ×1.5, 10g upkeep', icon: 'i-shield' },
       { up: { kind: 'garrison', garrison: 'drake' }, label: 'Drake — rent ×2, 25g upkeep', icon: 'i-shield' },
+      { up: { kind: 'garrison', garrison: 'tower' }, label: 'Arrow Tower — +3 defense in challenges', icon: 'i-shield' },
+      { up: { kind: 'enchant', enchant: 'academy' }, label: 'Academy — stationed hero +3 Wits', icon: 'i-star' },
     ];
     buildRows = options.map((opt, i) => {
       const err = buildError(state, me, id, opt.up);
@@ -234,6 +288,27 @@ export function propertySheet(
     const sell = mine && canAct ? `<button class="slot-sell" data-sell="${i}">sell ${val}g</button>` : '';
     return `<span class="slot"><svg class="ic"><use href="#${icon}"/></svg>${sell}</span>`;
   }).join('') + (n.type === 'prop' ? '<span class="slot empty">+</span>'.repeat(3 - o.upgrades.length) : '');
+
+  let guard = '';
+  if (n.type === 'prop' && o.owner !== null) {
+    const canStation = mine && state.current === human && state.phase === 'postroll' && !state.pending && state.winner === null;
+    const h = o.hero ? hero(o.hero) : null;
+    const bonus = Math.round(WITS_RENT_BONUS * stationedWits(o) * 100);
+    const holder = h
+      ? `<p class="guard-line"><b>${esc(h.name)}</b>, ${esc(h.title)} · Might ${h.might} · Wits ${h.wits}${bonus ? ` (+${bonus}% rent)` : ''}
+         ${canStation ? `<button class="btn ghost small" data-recall="${o.hero}">RECALL</button>` : ''}</p>`
+      : '<p class="guard-line">No hero stands guard: the town militia defends.</p>';
+    const candidates = mine && !o.hero ? retinue(state, human) : [];
+    const stationRows = candidates.map(c => `
+      <button class="opt-row" data-station="${c}" ${canStation ? '' : 'disabled'}>
+        <span>Station <b>${esc(hero(c).name)}</b> · Might ${hero(c).might} · Wits ${hero(c).wits}${me.exhausted.includes(c) ? ' · exhausted' : ''}</span>
+        <b>${canStation ? `+${Math.round(WITS_RENT_BONUS * (hero(c).wits + (hasEnchant(o, 'academy') ? 3 : 0)) * 100)}% rent` : 'after you move'}</b>
+      </button>`).join('');
+    guard = `<div class="guard">
+      <h5>DEFENSE · ${defenseBase(state, id)} + d6 <small>${esc(defenseParts(state, id).join(' · '))}</small></h5>
+      ${holder}${stationRows}
+    </div>`;
+  }
 
   const manage = mine ? `
     <div class="foot">
@@ -253,6 +328,7 @@ export function propertySheet(
     </div>
     ${o.owner !== null && !o.mortgaged ? `<p class="rent-now">Rent today: <b>${rentNow}g</b></p>` : ''}
     ${n.type === 'prop' ? `<div class="slots">${slots}</div>` : ''}
+    ${guard}
     ${buildRows ? `<div class="build-list">${buildRows}</div>` : ''}
     ${manage}
     <div class="foot"><button class="btn ghost" id="s-close">CLOSE</button></div>
@@ -263,6 +339,10 @@ export function propertySheet(
   wrap.querySelector('#s-mort')?.addEventListener('click', () => dispatch({ type: 'mortgage', node: id }));
   wrap.querySelector('#s-unmort')?.addEventListener('click', () => dispatch({ type: 'unmortgage', node: id }));
   wrap.querySelector('#s-cleanse')?.addEventListener('click', () => dispatch({ type: 'cleanse', node: id }));
+  wrap.querySelectorAll<HTMLElement>('[data-station]').forEach(b =>
+    b.addEventListener('click', () => dispatch({ type: 'stationHero', hero: b.dataset.station!, node: id })));
+  wrap.querySelectorAll<HTMLElement>('[data-recall]').forEach(b =>
+    b.addEventListener('click', () => dispatch({ type: 'stationHero', hero: b.dataset.recall!, node: null })));
   wrap.querySelectorAll<HTMLElement>('[data-sell]').forEach(b =>
     b.addEventListener('click', () => dispatch({ type: 'sellUpgrade', node: id, slot: Number(b.dataset.sell) })));
   const opts = (wrap as unknown as { _opts?: Array<{ up: Upgrade }> })._opts;

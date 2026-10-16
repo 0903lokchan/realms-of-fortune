@@ -2,7 +2,7 @@
 
 A web-based, fantasy-themed board game inspired by Monopoly. Players roll dice to travel a board of fantasy territories, invest in properties, and try to bankrupt their rivals — but every player is a character class with unique traits, and properties grow through multiple upgrade paths instead of a single house-to-hotel ladder.
 
-**Status:** Draft v0.3 — core decisions locked:
+**Status:** Draft v0.4 — adds heroes, challenges and tactic cards inspired by 富甲天下4 (§11). Core decisions locked:
 
 - **Single-player:** one human vs 1–3 AI opponents (see §9).
 - **Tone:** spicy — targeted abilities, Curses, and Traps stay in.
@@ -201,3 +201,64 @@ Spice note: targeted abilities (Pickpocket, Curses, Shakedown) are *more* fun in
 2. **Class draft:** does the human pick their class and then AIs fill in, or is there a short draft (pick from 3 random) for replay variety?
 3. **Meta-progression:** any unlocks between runs (new classes, cosmetics, harder AI personalities)? Big retention lever for a single-player web game, but scope.
 4. **Undo policy:** since it's single-player, allow undo of build/trade actions before ending turn? (Suggest yes — kindness is free vs AI.)
+
+---
+
+## 11. Heroes, Challenges & Tactics (v0.4)
+
+Inspired by 富甲天下4: warlords recruit generals (武將/文官), contest enemy cities instead of meekly paying tolls (單挑/攻城), and outwit each other with strategy cards (錦囊). The goal is more player-vs-player interaction without slowing the 30-minute game: every new decision resolves in one roll and one short animation.
+
+### 11.1 The Crossroads Bazaar
+
+Whenever you pass or land on the Crossroads, the **Bazaar** opens for the rest of your turn. It sells heroes and tactic cards, and visiting it does not use your one Action. Everyone's first turn starts with the Bazaar open, since everyone starts at the Crossroads.
+
+### 11.2 Heroes
+
+A shared pool of 16 named heroes, each with **Might** (fighting) and **Wits** (cunning), rated 1–9, and a hire price of 90–260g. Three are for hire at a time; a hired hero is replaced from the pool. Each player starts with one random hero from the cheapest tier and may hold **at most 3**.
+
+A hero is in exactly one place:
+- **Retinue** — travels with you and fights when you challenge. Your best retinue Wits powers your tactic cards.
+- **Stationed** on one of your properties (one hero per property) — defends it in challenges, and adds **+4% rent per point of Wits**.
+
+Heroes may be stationed or recalled only **after you move** (postroll), so the retinue you roll with is settled at the end of your previous turn: a hero cannot both defend through your rivals' turns and attack on yours.
+
+### 11.3 Challenges (pay or fight)
+
+Landing on a rival's land with rent due, you choose: **pay**, **challenge**, or (Rogue, ability ready) **pickpocket**.
+
+- **Attack** = your best retinue Might (your champion alone fights at 2) + d6. Warriors add +2.
+- **Defense** = the stationed hero's Might or the town militia's 3, whichever is higher (a stationed scholar never weakens a land) + 2 per Settlement tier + garrison (Guard Post +1, Ogre +2, Drake +3, Arrow Tower +3) + d6.
+- **Attack > defense:** you pay nothing. Win by 5 or more and you also **sack** the land: its newest upgrade is destroyed (a Ward prevents this). A routed stationed hero falls back to its owner's retinue.
+- **Otherwise:** you pay **double rent**.
+- **Exhaustion:** the hero who fights (win or lose) is exhausted until you next pass the Crossroads. Each rested retinue hero is roughly one challenge per lap, so you choose which toll is worth a fight. (This is 富甲天下's troop strength (兵力) in miniature.)
+
+Balance intent, from the dice odds: unguarded cheap land is easy to contest; a one-tier town is a coin flip for a strong hero; a castle or a well-guarded land is rarely worth attacking. Stationing heroes is what makes development safe. The dialog shows the exact odds of winning.
+
+*Why exhaustion exists:* without it, simulated AIs challenged 84% of rents and won 91%, wiping out more rent than was paid. With it, challenges cover about 8% of rent decisions and avoid about 11% of rent (500 simulated games).
+
+### 11.4 Tactic cards (錦囊)
+
+Bought at the Bazaar or won from Fate/Quest cards; hand limit 3. Play **one tactic per turn**, before or after moving; it does not use your Action.
+
+| Tactic | Price | Effect |
+|---|---|---|
+| **Rooted** (故步自封) | 100g | A rival skips their next move. Once shaken off, they can't be Rooted again until they pass the Crossroads. |
+| **Lure** (調虎離山) | 150g | Pull a rival onto one of your lands within 6 steps ahead of them; they owe rent (and may challenge). |
+| **Burn the Bridge** (過河拆橋) | 60g | Close the Ironvein Pass or the Underway to everyone else until your next turn. |
+| **Feint** (欲擒故縱) | 90g | Kept in hand: the next hostile tactic played on you is turned back on its caster. |
+| **Forced March** | 50g | Roll a third die this turn. |
+| **Sabotage** | 140g | Destroy the newest upgrade on a rival land (blocked by a Ward). |
+
+**Cunning:** a hostile tactic (Rooted, Lure, Sabotage) may be seen through. If the target's best Wits beats your best retinue Wits, it fails with a 15% chance per point of difference (max 60%). A Cleric's Sanctuary blocks tactics outright.
+
+### 11.5 New buildings
+
+- **Arrow Tower** (Garrison, 100g): +3 defense in challenges, no upkeep. It competes with the Ogre and Drake for the single garrison slot.
+- **Academy** (Enchantment, 100g): the stationed hero counts +3 Wits.
+
+### 11.6 AI
+
+- **Challenges:** the AI weighs the exact win chance: challenging costs (1 − P(win)) × 2 × rent in expectation. Karg (aggressive) challenges at worse odds than Vex (careful).
+- **Bazaar:** hires toward 2–3 heroes, preferring Might or Wits by personality. Buys Lure, Sabotage, Rooted and Feint when it can afford them above its cash buffer.
+- **Stationing:** keeps its best fighter in the retinue and stations the rest on its highest-rent lands.
+- **Tactics:** Lures rivals onto its most developed land in range, Sabotages the leader's best land, Roots the leader.

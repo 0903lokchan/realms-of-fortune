@@ -1,7 +1,7 @@
 import './style.css';
 import { decide, type Difficulty } from '../ai/ai';
 import { actingPlayer, applyAction, createGame } from '../engine/engine';
-import type { Action, ClassId, GameState, NodeId, PlayerId } from '../engine/types';
+import type { Action, ClassId, GameState, HeroId, NodeId, PlayerId, TacticId } from '../engine/types';
 import { CROSSROADS_INCOME } from '../engine/types';
 import { AI_ROSTER, CLASS_INFO, esc, HERO_NAMES, SEAT_COLORS } from './theme';
 import { buildMap, drawHints, floatAtNode, pingNode, updateMap, type MapLayers } from './map';
@@ -10,6 +10,7 @@ import { renderPanel, setDieFace } from './panel';
 import { TokenLayer, sleep } from './tokens';
 import { clearSave, loadSave, writeSave, type SaveGame } from './save';
 import { abilityTargets, endScreen, pendingDialog, propertySheet, tradeBuilder } from './dialogs';
+import { bazaarDialog, playDuel, playTacticReveal, tacticDialog } from './warroom';
 
 const HUMAN = 0;
 const app = document.getElementById('app')!;
@@ -19,8 +20,11 @@ let difficulty: Difficulty = 'knight';
 let layers: MapLayers | null = null;
 let tokens: TokenLayer | null = null;
 
-/** A user-opened modal; `refresh` rebuilds it so it never shows stale numbers. */
-let modal: { el: HTMLElement; refresh?: () => HTMLElement } | null = null;
+/**
+ * A user-opened modal; `refresh` rebuilds it so it never shows stale numbers.
+ * `sticky` modals (the Bazaar, a property sheet) stay open after an action so you can do several things.
+ */
+let modal: { el: HTMLElement; refresh?: () => HTMLElement; sticky?: boolean } | null = null;
 
 /** Bumped on every new game/setup so in-flight animations and AI loops from an old game bail out. */
 let gameId = 0;
@@ -162,7 +166,7 @@ function enterGame() {
   app.innerHTML = `
   <div class="page game-page">
     <div class="screen">
-      <div class="frame map-wrap"><svg id="map"></svg><div id="banner"></div></div>
+      <div class="frame map-wrap"><svg id="map"></svg><div id="banner"></div><div id="clash"></div></div>
       <aside class="frame panel" id="panel"></aside>
     </div>
     <div id="overlay"></div>
@@ -179,7 +183,7 @@ function onNodeClick(id: NodeId) {
   if (!state || state.winner !== null || busy) return;
   if (state.pending && actingPlayer(state) === HUMAN) return; // answer the open decision first
   const refresh = () => propertySheet(state!, HUMAN, id, dispatch, closeModal);
-  modal = { el: refresh(), refresh };
+  modal = { el: refresh(), refresh, sticky: true };
   render();
 }
 
@@ -259,6 +263,15 @@ function bindPanel() {
     const el = abilityTargets(state, HUMAN, dispatch, closeModal);
     if (el) openModal(el);
   });
+  on('btn-bazaar', () => {
+    if (!state || busy) return;
+    const refresh = () => bazaarDialog(state!, HUMAN, dispatch, closeModal);
+    modal = { el: refresh(), refresh, sticky: true };
+    render();
+  });
+  document.querySelectorAll<HTMLElement>('[data-tactic]').forEach(b => b.addEventListener('click', () => {
+    if (state && !busy) openModal(tacticDialog(state, HUMAN, dispatch, closeModal, b.dataset.tactic as TacticId));
+  }));
 }
 
 /* ---------------- performing actions ---------------- */
@@ -271,13 +284,13 @@ interface Snapshot {
   current: PlayerId;
   season: GameState['season'];
   dice: [number, number];
-  lands: Record<NodeId, { owner: PlayerId | null; ups: number; cursed: boolean; mortgaged: boolean }>;
+  lands: Record<NodeId, { owner: PlayerId | null; ups: number; cursed: boolean; mortgaged: boolean; hero: HeroId | null }>;
 }
 
 function snapshot(s: GameState): Snapshot {
   const lands: Snapshot['lands'] = {};
   for (const [id, o] of Object.entries(s.ownership)) {
-    lands[id] = { owner: o.owner, ups: o.upgrades.length, cursed: o.cursed, mortgaged: o.mortgaged };
+    lands[id] = { owner: o.owner, ups: o.upgrades.length, cursed: o.cursed, mortgaged: o.mortgaged, hero: o.hero };
   }
   return {
     cash: s.players.map(p => p.cash),
@@ -316,19 +329,29 @@ async function present(before: Snapshot, action: Action): Promise<number> {
   const displayPos = [...before.pos];
   for (const f of s.fx) {
     if (gid !== gameId) return 0;
-    if (f.type === 'roll') {
-      await rollDice(f.dice);
-      shown.dice = f.dice;
-    } else {
-      displayPos[f.player] = f.path[f.path.length - 1];
-      const finalXY = TokenLayer.rest(displayPos, before.alive, f.player);
-      if (f.teleport) {
-        await tokens!.teleport(f.player, finalXY, speed);
-      } else {
-        await tokens!.walk(f.player, f.path, finalXY, speed, id => {
-          if (id === 'crossroads') floatAtNode(layers!.fx, id, `+${CROSSROADS_INCOME}g`, '#ffd97a');
-        });
+    switch (f.type) {
+      case 'roll':
+        await rollDice(f.dice);
+        shown.dice = f.dice;
+        break;
+      case 'move': {
+        displayPos[f.player] = f.path[f.path.length - 1];
+        const finalXY = TokenLayer.rest(displayPos, before.alive, f.player);
+        if (f.teleport) {
+          await tokens!.teleport(f.player, finalXY, speed);
+        } else {
+          await tokens!.walk(f.player, f.path, finalXY, speed, id => {
+            if (id === 'crossroads') floatAtNode(layers!.fx, id, `+${CROSSROADS_INCOME}g`, '#ffd97a');
+          });
+        }
+        break;
       }
+      case 'duel':
+        await playDuel(f, s, speed);
+        break;
+      case 'tactic':
+        await playTacticReveal(f, s, HUMAN, speed);
+        break;
     }
   }
   if (gid !== gameId) return 0;
@@ -378,6 +401,8 @@ function pingChanges(before: Snapshot): number {
     else if (!o.cursed && b.cursed) ping(id, '#8fd0a0', 'CLEANSED');
     else if (o.mortgaged && !b.mortgaged) ping(id, '#9a917c', 'MORTGAGED');
     else if (!o.mortgaged && b.mortgaged) ping(id, '#8fd0a0', 'REDEEMED');
+    else if (o.hero && o.hero !== b.hero) ping(id, SEAT_COLORS[o.owner!], 'GUARDED');
+    else if (!o.hero && b.hero) ping(id, '#9a917c', 'UNGUARDED');
   }
   s.players.forEach(p => {
     if (p.bankrupt && before.alive[p.id]) ping(before.pos[p.id], '#e05038', 'RUINED');
@@ -434,6 +459,8 @@ function nextAiDelay(action: Action, before: Snapshot, notable: number): number 
   const s = state!;
   if (s.current !== before.current || s.season !== before.season) return BANNER_MS - 150;
   if (notable > 0 || action.type === 'useAbility' || action.type === 'proposeTrade') return 950;
+  if (action.type === 'playTactic' || action.type === 'rentChoice') return 650;
+  if (action.type === 'hireHero' || action.type === 'buyTactic') return 450;
   if (action.type === 'bid' || action.type === 'passBid') return 380;
   if (action.type === 'roll' || action.type === 'chooseFork' || action.type === 'dungeonChoice') return 550;
   return 380;
@@ -443,7 +470,7 @@ async function dispatch(a: Action) {
   if (!state || busy) return;
   const err = await perform(a);
   if (err) { toast(err); return; }
-  modal = null;
+  if (!modal?.sticky) modal = null;
   render();
   aiLoop();
 }

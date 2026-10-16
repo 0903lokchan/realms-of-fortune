@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../src/engine/engine';
+import { hero } from '../src/engine/heroes';
 import { baseRent, buildError, effectiveTier, netWorth, rentFor, upgradeCost } from '../src/engine/rules';
 import type { GameState } from '../src/engine/types';
 
@@ -112,12 +113,13 @@ describe('net worth', () => {
   it('counts cash, land, and improvements', () => {
     const s = fresh();
     const p = s.players[0];
-    expect(netWorth(s, p)).toBe(1200);
+    const crew = Math.floor(hero(p.heroes[0]).cost / 2); // the starting hero, at half its price
+    expect(netWorth(s, p)).toBe(1200 + crew);
     s.ownership['forge'].owner = 0;
-    expect(netWorth(s, p)).toBe(1380);
+    expect(netWorth(s, p)).toBe(1380 + crew);
     s.ownership['forge'].upgrades.push({ kind: 'settlement' });
-    expect(netWorth(s, p)).toBe(1430); // + half of 100 build cost
+    expect(netWorth(s, p)).toBe(1430 + crew); // + half of 100 build cost
     s.ownership['forge'].mortgaged = true;
-    expect(netWorth(s, p)).toBe(1340); // land at half value
+    expect(netWorth(s, p)).toBe(1340 + crew); // land at half value
   });
 });

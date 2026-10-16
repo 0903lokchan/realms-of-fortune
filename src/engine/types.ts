@@ -27,8 +27,10 @@ export type ClassId =
   | 'warrior' | 'wizard' | 'rogue' | 'cleric'
   | 'bard' | 'merchant' | 'ranger' | 'necromancer';
 
-export type EnchantType = 'ward' | 'vault' | 'trap' | 'beacon' | 'orb';
-export type GarrisonType = 'guard' | 'ogre' | 'drake';
+export type EnchantType = 'ward' | 'vault' | 'trap' | 'beacon' | 'orb' | 'academy';
+export type GarrisonType = 'guard' | 'ogre' | 'drake' | 'tower';
+export type HeroId = string;
+export type TacticId = 'rooted' | 'lure' | 'bridge' | 'feint' | 'march' | 'sabotage';
 export type Upgrade =
   | { kind: 'settlement' }
   | { kind: 'enchant'; enchant: EnchantType }
@@ -44,6 +46,8 @@ export interface Ownable {
   trapArmed: boolean;
   /** Scrying orb available this lap. */
   orbReady: boolean;
+  /** Hero stationed here, defending it (properties only). */
+  hero: HeroId | null;
 }
 
 export interface KeptCard {
@@ -69,6 +73,22 @@ export interface Player {
   keptQuests: KeptCard[];
   /** One optional Action per turn (build / ability / trade / mortgage). */
   actionUsed: boolean;
+  /** Heroes owned (max 3). Those not stationed on a property form the retinue. */
+  heroes: HeroId[];
+  /** Heroes who fought a challenge this lap; they rest when you next pass the Crossroads. */
+  exhausted: HeroId[];
+  /** Tactic cards in hand (max 3). */
+  tactics: TacticId[];
+  /** One tactic per turn. */
+  tacticUsed: boolean;
+  /** The Crossroads Bazaar is open to this player for the rest of their turn. */
+  bazaarOpen: boolean;
+  /** Rooted: the next roll moves nowhere. */
+  rooted: boolean;
+  /** Shook off a Rooted this lap: immune to another until passing the Crossroads. */
+  rootImmune: boolean;
+  /** Forced March: the next roll adds a third die. */
+  forcedMarch: boolean;
 }
 
 export type Season = 'summer' | 'autumn' | 'winter';
@@ -78,7 +98,8 @@ export type Pending =
   | { type: 'rangerAdjust'; player: PlayerId; rolled: number; options: number[] }
   | { type: 'buyOrPass'; player: PlayerId; node: NodeId; price: number }
   | { type: 'auctionBid'; player: PlayerId; node: NodeId; currentBid: number; leader: PlayerId | null }
-  | { type: 'pickpocket'; player: PlayerId; node: NodeId; rent: number; owner: PlayerId }
+  /** Rent is due: pay, challenge, or (Rogue) pickpocket. `lured` rents arrive outside the payer's own move. */
+  | { type: 'rentDue'; player: PlayerId; node: NodeId; rent: number; owner: PlayerId; lured: boolean; canPickpocket: boolean }
   | { type: 'dungeon'; player: PlayerId }
   | { type: 'chooseCurseTarget'; player: PlayerId; options: NodeId[] }
   | { type: 'tradeOffer'; player: PlayerId; offer: TradeOffer };
@@ -125,7 +146,20 @@ export interface GameEvent {
 export type Fx =
   | { type: 'roll'; player: PlayerId; dice: [number, number] }
   /** Walks list every node stepped through (path[0] is the start); teleports have two entries. */
-  | { type: 'move'; player: PlayerId; path: NodeId[]; teleport: boolean };
+  | { type: 'move'; player: PlayerId; path: NodeId[]; teleport: boolean }
+  | {
+      type: 'duel'; attacker: PlayerId; owner: PlayerId; node: NodeId;
+      attackHero: HeroId | null; defendHero: HeroId | null;
+      attackBase: number; defenseBase: number; attackDie: number; defenseDie: number;
+      won: boolean; sacked: boolean;
+    }
+  | {
+      type: 'tactic'; player: PlayerId; tactic: TacticId; target: PlayerId | null;
+      /** Turned back on the caster by a Feint. */
+      reflected: boolean;
+      /** Seen through by the target's cunning. */
+      resisted: boolean;
+    };
 
 export interface CompletedTrade {
   from: PlayerId;
@@ -163,6 +197,12 @@ export interface GameState {
   events: GameEvent[];
   eventSeq: number;
   fx: Fx[];
+  /** Unhired heroes, shuffled; refills the for-hire line-up. */
+  heroPool: HeroId[];
+  /** Heroes currently for hire at the Bazaar (up to 3). */
+  forHire: HeroId[];
+  /** Shortcut entrances closed by Burn the Bridge until the closer's next turn. */
+  closedRoutes: Array<{ node: NodeId; by: PlayerId }>;
   winner: PlayerId | null;
 }
 
@@ -175,7 +215,13 @@ export type Action =
   | { type: 'declineBuy' }
   | { type: 'bid'; amount: number }
   | { type: 'passBid' }
-  | { type: 'pickpocket'; use: boolean }
+  | { type: 'rentChoice'; choice: 'pay' | 'challenge' | 'pickpocket' }
+  | { type: 'hireHero'; hero: HeroId }
+  | { type: 'buyTactic'; tactic: TacticId }
+  /** Station a retinue hero on your land, or recall it (node null). After moving only. */
+  | { type: 'stationHero'; hero: HeroId; node: NodeId | null }
+  /** `target` names the rival for Rooted/Lure; `node` the land for Lure/Sabotage or the shortcut for Burn the Bridge. */
+  | { type: 'playTactic'; tactic: TacticId; target?: PlayerId; node?: NodeId }
   | { type: 'dungeonChoice'; choice: 'bribe' | 'roll' | 'fight' | 'writ' }
   | { type: 'chooseCurseTarget'; node: NodeId | null }
   | { type: 'build'; node: NodeId; upgrade: Upgrade }
@@ -200,3 +246,13 @@ export const WINTER_ROUND = 15;
 export const ABILITY_COOLDOWN = 3;
 export const BEACON_TOLL = 20;
 export const VAULT_INCOME = 25;
+export const MAX_HEROES = 3;
+export const MAX_TACTICS = 3;
+export const LURE_RANGE = 6;
+/** Fighting strength of a champion with no retinue hero, and of an unguarded land's militia. */
+export const CHAMPION_MIGHT = 2;
+export const MILITIA_MIGHT = 3;
+/** Crushing margin that sacks an upgrade. */
+export const SACK_MARGIN = 5;
+/** Rent bonus per point of Wits of the stationed hero. */
+export const WITS_RENT_BONUS = 0.04;

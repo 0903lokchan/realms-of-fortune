@@ -74,6 +74,7 @@ describe('turn flow', () => {
     s.players[0].cash = rent - 50;
     landOn(s, 'citadel');
     _test.resolveLanding(s, 7);
+    ok(s, { type: 'rentChoice', choice: 'pay' });
     expect(s.players[0].bankrupt).toBe(false);
     expect(s.ownership['forge'].mortgaged).toBe(true);
     expect(s.players[1].cash).toBe(1200 + rent);
@@ -86,6 +87,7 @@ describe('turn flow', () => {
     t.players[0].cash = 100;
     landOn(t, 'citadel');
     _test.resolveLanding(t, 7);
+    ok(t, { type: 'rentChoice', choice: 'pay' });
     expect(t.players[0].bankrupt).toBe(true);
     expect(t.phase).toBe('gameover');
     expect(t.winner).toBe(1);
@@ -265,7 +267,7 @@ describe('turn flow', () => {
         else if (p.type === 'auctionBid') ok(s, { type: 'passBid' });
         else if (p.type === 'fork') ok(s, { type: 'chooseFork', to: p.options[0] });
         else if (p.type === 'dungeon') ok(s, { type: 'dungeonChoice', choice: 'roll' });
-        else if (p.type === 'pickpocket') ok(s, { type: 'pickpocket', use: false });
+        else if (p.type === 'rentDue') ok(s, { type: 'rentChoice', choice: 'pay' });
         else if (p.type === 'chooseCurseTarget') ok(s, { type: 'chooseCurseTarget', node: null });
         else break;
       } else if (s.phase === 'preroll') ok(s, { type: 'roll' });
