@@ -223,6 +223,37 @@ svg text{font-family:'Alegreya',serif}
 .route .tag{display:inline-block;font-size:10px;font-family:'Cinzel',serif;letter-spacing:1px;padding:2px 8px;border-radius:9px;margin-top:8px}
 .route .safe{color:#8fd0a0;border:1px solid #8fd0a044}
 .route .risky{color:#e07a62;border:1px solid #e07a6244}
+.routes.three{grid-template-columns:repeat(3,1fr)}
+@media(max-width:560px){.routes.three{grid-template-columns:1fr}}
+.route.hot{border-color:var(--gold);box-shadow:0 0 14px rgba(232,201,106,.25)}
+.route h5{display:flex;align-items:center;gap:8px}
+.route h5 small{font-family:'Alegreya',serif;font-style:italic;font-weight:400;letter-spacing:0;color:var(--text-dim)}
+.route .lands{margin-top:7px;font-size:12px;color:#b5ab8f;line-height:1.35}
+.route .lands b{color:#efe6cb;font-family:'Cinzel',serif;font-size:11.5px;letter-spacing:.5px}
+.route .lands span{display:block;font-style:italic;color:var(--tone)}
+.route .perk{font-size:11px;font-style:italic;color:var(--text-dim);padding-left:10px}
+.route .perk::before{content:'· '}
+
+/* tone palette shared by dialog badges, landing notes and map markers */
+.good{--tone:#8fd0a0}
+.bad{--tone:#e07a62}
+.own{--tone:#7fb0f8}
+.neutral{--tone:#e8c96a}
+.badge{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:22px;height:22px;border-radius:50%;background:var(--tone);color:#0d1117;
+  font-family:'Cinzel',serif;font-weight:900;font-size:12px;letter-spacing:0;
+  box-shadow:0 0 8px color-mix(in srgb, var(--tone) 60%, transparent);
+}
+
+#hints .hint{cursor:pointer}
+.hint-ring{fill:none;stroke:var(--tone);stroke-width:2.5;stroke-dasharray:4 4;
+  animation:march 1s linear infinite;filter:drop-shadow(0 0 4px var(--tone))}
+.hint-badge{fill:var(--tone);stroke:#0d1117;stroke-width:2}
+.hint-num{font-family:'Cinzel',serif;font-weight:900;font-size:12px;fill:#0d1117;pointer-events:none}
+.hint.hot .hint-ring{stroke-width:4;stroke-dasharray:none}
+.hint.hot .hint-badge{stroke:#f4ecd6;stroke-width:2.5}
+@keyframes march{to{stroke-dashoffset:-16}}
 
 .bids{display:flex;gap:10px;justify-content:center;margin:14px 0 4px;flex-wrap:wrap}
 .bid{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 13px;border-radius:6px;

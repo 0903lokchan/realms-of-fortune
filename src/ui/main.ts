@@ -4,7 +4,8 @@ import { actingPlayer, applyAction, createGame } from '../engine/engine';
 import type { Action, ClassId, GameState, NodeId, PlayerId } from '../engine/types';
 import { CROSSROADS_INCOME } from '../engine/types';
 import { AI_ROSTER, CLASS_INFO, esc, HERO_NAMES, SEAT_COLORS } from './theme';
-import { buildMap, floatAtNode, pingNode, updateMap, type MapLayers } from './map';
+import { buildMap, drawHints, floatAtNode, pingNode, updateMap, type MapLayers } from './map';
+import { previewFor } from './preview';
 import { renderPanel, setDieFace } from './panel';
 import { TokenLayer, sleep } from './tokens';
 import { clearSave, loadSave, writeSave, type SaveGame } from './save';
@@ -207,6 +208,9 @@ function render() {
       state.winner === null ? state.current : null);
   }
   updateMap(layers.dyn, state);
+  const preview = !busy && state.winner === null ? previewFor(state, HUMAN) : null;
+  drawHints(layers.hints, preview?.landings ?? [], key => dispatch(
+    preview!.kind === 'stride' ? { type: 'rangerAdjust', steps: Number(key) } : { type: 'chooseFork', to: key }));
   renderPanel(document.getElementById('panel')!, state, HUMAN, {
     busy, cash: shown.cash, shownSeq: shown.seq, freshAfter, dice: shown.dice, speed,
   });
@@ -220,11 +224,26 @@ function render() {
     return;
   }
   const pend = pendingDialog(state, HUMAN, dispatch);
-  if (pend) overlay.appendChild(pend);
-  else if (modal) {
+  if (pend) {
+    overlay.appendChild(pend);
+    if (preview) linkOptionHover();
+  } else if (modal) {
     if (modal.refresh) modal.el = modal.refresh();
     overlay.appendChild(modal.el);
   }
+}
+
+/** Hovering a dialog option lights its map markers, and hovering a marker lights its option. */
+function linkOptionHover() {
+  const linked = document.querySelectorAll<HTMLElement | SVGElement>('[data-opt]');
+  const light = (key: string, on: boolean) => linked.forEach(e => {
+    if (e.dataset.opt === key) e.classList.toggle('hot', on);
+  });
+  linked.forEach(e => {
+    const key = e.dataset.opt!;
+    e.addEventListener('mouseenter', () => light(key, true));
+    e.addEventListener('mouseleave', () => light(key, false));
+  });
 }
 
 function bindPanel() {

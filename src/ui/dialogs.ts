@@ -7,15 +7,32 @@ import {
 } from '../engine/rules';
 import type { Action, GameState, NodeId, Upgrade } from '../engine/types';
 import { CLASS_INFO, esc, REGION_COLORS, REGION_NAMES, SEAT_COLORS } from './theme';
+import { previewFor, type Landing } from './preview';
 
 type Dispatch = (a: Action) => void;
 
 const ROUTE_FLAVOR: Record<string, { name: string; desc: string; tag: string; cls: string }> = {
-  way_w: { name: 'THE COAST ROAD', desc: 'North through the Wildwood and the far Waygates. Passes the Crossroads for 150g.', tag: 'SAFER · LONGER', cls: 'safe' },
+  way_w: { name: 'THE COAST ROAD', desc: 'North through the Wildwood and the far Waygates — the long way round.', tag: 'SAFER · LONGER', cls: 'safe' },
   rockfall: { name: 'THE IRONVEIN PASS', desc: "Over the mountains, past the Dungeon's gates. Skips half the realm — and its rents.", tag: 'FAST · PERILOUS', cls: 'risky' },
   rune: { name: 'THE HIGH ROAD', desc: 'On through the Mage Districts and Dragonspine — and the King’s Levy.', tag: 'THE LONG WAY', cls: 'safe' },
   gull: { name: 'THE UNDERWAY', desc: 'A smugglers’ sea route. 50g ferry toll, but it dodges the King’s Levy.', tag: 'TOLL · SNEAKY', cls: 'risky' },
 };
+
+/** "Lands on X — note" lines for one option; a fork further on lists each possible end. */
+function landingLines(landings: Landing[], key: string): string {
+  const mine = landings.filter(l => l.key === key);
+  const lines = mine.map((l, i) => `
+    <p class="lands ${l.tone}">${mine.length > 1 ? (i === 0 ? 'Fork ahead — ' : 'or ') : 'Lands on '}<b>${esc(node(l.end).name)}</b>
+      <span>${esc(l.note)}</span></p>
+    ${l.perks.map(perk => `<p class="perk">${esc(perk)}</p>`).join('')}`);
+  return lines.join('');
+}
+
+/** Badge colour for an option: its landing's tone, or neutral when a fork leaves it open. */
+function toneOf(landings: Landing[], key: string): string {
+  const mine = landings.filter(l => l.key === key);
+  return mine.length === 1 ? mine[0].tone : 'neutral';
+}
 
 /** `docked` dialogs sit at the bottom over a light backdrop so the map stays readable. */
 function dialog(title: string, sub: string, body: string, docked = false): string {
@@ -35,23 +52,32 @@ export function pendingDialog(state: GameState, human: number, dispatch: Dispatc
 
   switch (p.type) {
     case 'fork': {
-      const routes = p.options.map(to => {
+      const landings = previewFor(state, human)?.landings ?? [];
+      const routes = p.options.map((to, i) => {
         const f = ROUTE_FLAVOR[to] ?? { name: node(to).name.toUpperCase(), desc: '', tag: 'ONWARD', cls: 'safe' };
-        return `<button class="route" data-to="${to}">
-          <h5>${f.name}</h5><p>${f.desc}</p><span class="tag ${f.cls}">${f.tag}</span>
+        return `<button class="route" data-to="${to}" data-opt="${to}">
+          <h5><span class="badge ${toneOf(landings, to)}">${i + 1}</span>${f.name}</h5><p>${f.desc}</p>
+          ${landingLines(landings, to)}
+          <span class="tag ${f.cls}">${f.tag}</span>
         </button>`;
       }).join('');
       wrap.innerHTML = dialog('A Fork in the Road',
-        `${state.movement ? state.movement.remaining + ' steps yet to walk' : ''}`,
+        `${state.movement ? state.movement.remaining + ' steps yet to walk' : ''} · the numbered markers show where each road ends`,
         `<div class="routes">${routes}</div>`, true);
       wrap.querySelectorAll<HTMLElement>('.route').forEach(b =>
         b.addEventListener('click', () => dispatch({ type: 'chooseFork', to: b.dataset.to! })));
       return wrap;
     }
     case 'rangerAdjust': {
-      const opts = p.options.map(s =>
-        `<button class="btn" data-s="${s}">${s} STEPS${s === p.rolled ? ' (rolled)' : ''}</button>`).join('');
-      wrap.innerHTML = dialog('Choose Your Stride', 'A Ranger bends the road by one step.', `<div class="foot">${opts}</div>`);
+      const landings = previewFor(state, human)?.landings ?? [];
+      const opts = p.options.map(s => `
+        <button class="route" data-s="${s}" data-opt="${s}">
+          <h5><span class="badge ${toneOf(landings, String(s))}">${s}</span>${s} STEPS${s === p.rolled ? ' <small>(rolled)</small>' : ''}</h5>
+          ${landingLines(landings, String(s))}
+        </button>`).join('');
+      wrap.innerHTML = dialog('Choose Your Stride',
+        'A Ranger bends the road by one step · the numbered markers show where each stride lands',
+        `<div class="routes three">${opts}</div>`, true);
       wrap.querySelectorAll<HTMLElement>('[data-s]').forEach(b =>
         b.addEventListener('click', () => dispatch({ type: 'rangerAdjust', steps: Number(b.dataset.s) })));
       return wrap;

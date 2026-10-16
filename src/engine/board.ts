@@ -101,6 +101,17 @@ export const ENCHANT_COST = 100;
 export const GARRISON_COST: Record<'guard' | 'ogre' | 'drake', number> = { guard: 50, ogre: 150, drake: 250 };
 export const GARRISON_UPKEEP: Record<'guard' | 'ogre' | 'drake', number> = { guard: 0, ogre: 10, drake: 25 };
 
+export interface Walk { end: NodeId; path: NodeId[] }
+
+/** Every walk of exactly `steps` moves from `start`; a fork on the way yields one walk per road. */
+export function walksFrom(start: NodeId, steps: number): Walk[] {
+  let walks: Walk[] = [{ end: start, path: [start] }];
+  for (let i = 0; i < steps; i++) {
+    walks = walks.flatMap(w => node(w.end).out.map(to => ({ end: to, path: [...w.path, to] })));
+  }
+  return walks;
+}
+
 /** Directed BFS distances from a node (used by Blink / Appraise / AI lookahead). */
 export function distancesFrom(start: NodeId, maxDepth = 99): Map<NodeId, number> {
   const dist = new Map<NodeId, number>([[start, 0]]);

@@ -5,6 +5,7 @@ import { BOARD, node } from '../engine/board';
 import { garrison, hasEnchant, own, settlementTiers } from '../engine/rules';
 import type { GameState, NodeId } from '../engine/types';
 import { REGION_COLORS, SEAT_COLORS } from './theme';
+import type { Landing } from './preview';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const CX = 530, CY = 402, RX = 400, RY = 308;
@@ -77,6 +78,8 @@ export interface MapLayers {
   dyn: SVGGElement;
   /** Persistent player tokens (see tokens.ts). */
   tokens: SVGGElement;
+  /** Clickable landing markers for an open stride or fork choice. */
+  hints: SVGGElement;
   /** Transient pings and floating text. */
   fx: SVGGElement;
 }
@@ -232,8 +235,32 @@ export function buildMap(svg: SVGSVGElement, onNodeClick: (id: NodeId) => void):
   return {
     dyn: el(svg, 'g', { id: 'dyn' }) as SVGGElement,
     tokens: el(svg, 'g', { id: 'tokens' }) as SVGGElement,
+    hints: el(svg, 'g', { id: 'hints' }) as SVGGElement,
     fx: el(svg, 'g', { id: 'fx', style: 'pointer-events:none' }) as SVGGElement,
   };
+}
+
+/**
+ * Ring each landing node and pin its option badge on the side away from the node's label:
+ * inland of coastal nodes (whose labels face the sea), left of inland ones (labelled above).
+ * Badges sharing a node stack downward.
+ */
+export function drawHints(layer: SVGGElement, landings: Landing[], onPick: (key: string) => void) {
+  layer.innerHTML = '';
+  const perNode = new Map<NodeId, number>();
+  for (const l of landings) {
+    const p = POS[l.end];
+    const r = nodeRadius(l.end);
+    const n = perNode.get(l.end) ?? 0;
+    perNode.set(l.end, n + 1);
+    const g = el(layer, 'g', { class: `hint ${l.tone}`, 'data-opt': l.key });
+    if (n === 0) el(g, 'circle', { cx: p.x, cy: p.y, r: r + 7, class: 'hint-ring' });
+    const [dx, dy] = p.out !== undefined ? [-Math.cos(p.out), -Math.sin(p.out)] : [-1, 0];
+    const bx = p.x + dx * (r + 16), by = p.y + dy * (r + 16) + n * 22;
+    el(g, 'circle', { cx: bx, cy: by, r: 10, class: 'hint-badge' });
+    el(g, 'text', { x: bx, y: by + 4, 'text-anchor': 'middle', class: 'hint-num' }).textContent = l.badge;
+    g.addEventListener('click', () => onPick(l.key));
+  }
 }
 
 /** Expanding ring plus a rising label over a node. */
