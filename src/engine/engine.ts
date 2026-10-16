@@ -35,7 +35,8 @@ export function createGame(seed: number, players: PlayerConfig[]): GameState {
     consecutiveDoubles: 0,
     fateDeck: [], questDeck: [],
     stock: { settlements: 32, enchants: { ward: 2, vault: 2, trap: 2, beacon: 2, orb: 2 } },
-    lastTrade: null, lastRollDouble: false, lastRoll: null, rangerClaim: false, events: [], winner: null,
+    lastTrade: null, lastRollDouble: false, lastRoll: null, rangerClaim: false,
+    events: [], eventSeq: 0, fx: [], winner: null,
   };
   for (const n of BOARD.values()) {
     if (OWNABLE_TYPES.has(n.type)) {
@@ -51,8 +52,31 @@ export function createGame(seed: number, players: PlayerConfig[]): GameState {
 }
 
 function log(state: GameState, text: string) {
-  state.events.push({ round: state.round, text });
+  state.events.push({ id: ++state.eventSeq, round: state.round, text });
   if (state.events.length > 300) state.events.splice(0, state.events.length - 300);
+}
+
+function rollDice(state: GameState, player: Player): [number, number] {
+  const dice = roll2d6(state);
+  state.lastRoll = dice;
+  state.fx.push({ type: 'roll', player: player.id, dice });
+  return dice;
+}
+
+/** Record one walked step, extending the player's current walk effect. */
+function fxStep(state: GameState, player: Player, from: NodeId, to: NodeId) {
+  const last = state.fx[state.fx.length - 1];
+  if (last && last.type === 'move' && !last.teleport && last.player === player.id
+      && last.path[last.path.length - 1] === from) {
+    last.path.push(to);
+  } else {
+    state.fx.push({ type: 'move', player: player.id, path: [from, to], teleport: false });
+  }
+}
+
+function teleport(state: GameState, player: Player, to: NodeId) {
+  state.fx.push({ type: 'move', player: player.id, path: [player.pos, to], teleport: true });
+  player.pos = to;
 }
 
 const P = (state: GameState, id: PlayerId) => state.players[id];
@@ -188,6 +212,7 @@ function stepMove(state: GameState) {
 function advance(state: GameState, to: NodeId) {
   const player = cur(state);
   const mv = state.movement!;
+  fxStep(state, player, player.pos, to);
   player.pos = to;
   mv.remaining--;
   const n = node(to);
@@ -306,7 +331,7 @@ function drawFate(state: GameState, player: Player): void {
     case 'windfall': player.cash += 100; break;
     case 'tithe': charge(state, player.id, 80, null); break;
     case 'tailwind': {
-      player.pos = 'crossroads';
+      teleport(state, player, 'crossroads');
       crossedCapital(state, player);
       break;
     }
@@ -325,7 +350,7 @@ function drawFate(state: GameState, player: Player): void {
         .filter(w => dist.has(w) && dist.get(w)! > 0)
         .sort((a, b) => dist.get(a)! - dist.get(b)!)[0];
       if (gate) {
-        player.pos = gate;
+        teleport(state, player, gate);
         log(state, `${player.name} is hurled to ${node(gate).name}.`);
         return resolveLanding(state, 7);
       }
@@ -415,7 +440,7 @@ function checkKeptQuests(state: GameState, player: Player) {
 /* ------------------------------------------------------------------ */
 
 function sendToDungeon(state: GameState, player: Player) {
-  player.pos = 'dungeon';
+  teleport(state, player, 'dungeon');
   player.inDungeon = true;
   player.dungeonTurns = 0;
   state.movement = null;
@@ -428,7 +453,7 @@ function sendToDungeon(state: GameState, player: Player) {
 function releaseFromDungeon(state: GameState, player: Player) {
   player.inDungeon = false;
   player.dungeonTurns = 0;
-  player.pos = 'delve';
+  teleport(state, player, 'delve');
   log(state, `${player.name} steps out of the Dungeon at the Old Delve.`);
 }
 
@@ -594,7 +619,7 @@ function useAbility(state: GameState, target?: NodeId): string | null {
       const d = dist.get(target);
       if (d === undefined || d < 1 || d > 8) return 'out of range';
       arm();
-      player.pos = target;
+      teleport(state, player, target);
       log(state, `${player.name} blinks to ${node(target).name}.`);
       resolveLanding(state, 7);
       return null;
@@ -651,7 +676,7 @@ function useAbility(state: GameState, target?: NodeId): string | null {
       const o = state.ownership[target];
       if (!o || o.owner !== null || node(target).type !== 'prop') return 'not wild land';
       arm();
-      player.pos = target;
+      teleport(state, player, target);
       log(state, `${player.name} tracks a trail to ${node(target).name}.`);
       state.pending = {
         type: 'buyOrPass', player: player.id, node: target, price: node(target).price!,
@@ -714,6 +739,7 @@ function executeTrade(state: GameState, offer: TradeOffer) {
 
 export function applyAction(state: GameState, action: Action): string | null {
   if (state.winner !== null) return 'the game is over';
+  state.fx = [];
   const player = cur(state);
   const pend = state.pending;
 
@@ -818,8 +844,7 @@ export function applyAction(state: GameState, action: Action): string | null {
             state.phase = 'preroll';
             return null;
           case 'roll': {
-            const [a, b] = roll2d6(state);
-            state.lastRoll = [a, b];
+            const [a, b] = rollDice(state, player);
             if (a === b) {
               log(state, `${player.name} rolls double ${a}s and escapes!`);
               releaseFromDungeon(state, player);
@@ -832,12 +857,12 @@ export function applyAction(state: GameState, action: Action): string | null {
             return null;
           }
           case 'fight': {
-            const [a, b] = roll2d6(state);
+            const [a, b] = rollDice(state, player);
             const winFight = player.cls === 'warrior' || a + b >= 8;
             if (winFight) {
               log(state, `${player.name} fights free (${a}+${b})!`);
               releaseFromDungeon(state, player);
-              const [c, d] = roll2d6(state);
+              const [c, d] = rollDice(state, player);
               startMove(state, c + d, [c, d]);
             } else {
               charge(state, player.id, DUNGEON_BRUISES, null);
@@ -898,8 +923,7 @@ export function applyAction(state: GameState, action: Action): string | null {
     case 'roll': {
       if (state.phase !== 'preroll') return 'not the time to roll';
       if (state.movement) return 'already moving';
-      const [a, b] = roll2d6(state);
-      state.lastRoll = [a, b];
+      const [a, b] = rollDice(state, player);
       state.lastRollDouble = a === b;
       if (a === b) {
         state.consecutiveDoubles++;

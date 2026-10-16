@@ -1,10 +1,12 @@
 import './style.css';
 import { decide, type Difficulty } from '../ai/ai';
 import { actingPlayer, applyAction, createGame } from '../engine/engine';
-import type { Action, ClassId, GameState, NodeId } from '../engine/types';
-import { AI_ROSTER, CLASS_INFO, esc, HERO_NAMES } from './theme';
-import { buildMap, updateMap } from './map';
-import { renderPanel } from './panel';
+import type { Action, ClassId, GameState, NodeId, PlayerId } from '../engine/types';
+import { CROSSROADS_INCOME } from '../engine/types';
+import { AI_ROSTER, CLASS_INFO, esc, HERO_NAMES, SEAT_COLORS } from './theme';
+import { buildMap, floatAtNode, pingNode, updateMap, type MapLayers } from './map';
+import { renderPanel, setDieFace } from './panel';
+import { TokenLayer, sleep } from './tokens';
 import { abilityTargets, endScreen, pendingDialog, propertySheet, tradeBuilder } from './dialogs';
 
 const HUMAN = 0;
@@ -12,15 +14,47 @@ const app = document.getElementById('app')!;
 
 let state: GameState | null = null;
 let difficulty: Difficulty = 'knight';
-let dyn: SVGGElement | null = null;
-let userModal: HTMLElement | null = null;
-let aiTimer: number | null = null;
+let layers: MapLayers | null = null;
+let tokens: TokenLayer | null = null;
+
+/** A user-opened modal; `refresh` rebuilds it so it never shows stale numbers. */
+let modal: { el: HTMLElement; refresh?: () => HTMLElement } | null = null;
+
+/** Bumped on every new game/setup so in-flight animations and AI loops from an old game bail out. */
+let gameId = 0;
+/** An action's consequences are still animating: input is locked and the panel lags the engine. */
+let busy = false;
+let aiRunning = false;
+/** Pause before the AI's next move, chosen from what the last move was. */
+let aiDelay = 600;
+
+/** Values the panel shows; they trail the engine while an animation plays. */
+let shown = { cash: [] as number[], seq: 0, dice: [1, 1] as [number, number] };
+let freshAfter = 0;
+
+/* ---------------- animation speed ---------------- */
+
+const SPEEDS = [1, 2, 3];
+let speed = (() => {
+  try {
+    const saved = Number(localStorage.getItem('rof.speed'));
+    if (SPEEDS.includes(saved)) return saved;
+  } catch { /* storage unavailable */ }
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 3 : 1;
+})();
+
+function cycleSpeed() {
+  speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+  try { localStorage.setItem('rof.speed', String(speed)); } catch { /* storage unavailable */ }
+  render();
+}
 
 /* ---------------- setup screen ---------------- */
 
 function showSetup() {
   state = null;
-  if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+  gameId++;
+  busy = false;
   let chosen: ClassId = 'wizard';
   const classes = Object.entries(CLASS_INFO) as Array<[ClassId, typeof CLASS_INFO[ClassId]]>;
 
@@ -68,12 +102,16 @@ function startGame(cls: ClassId) {
     { name: HERO_NAMES[cls], cls, human: true },
     ...rivals,
   ]);
-  userModal = null;
+  gameId++;
+  busy = false;
+  modal = null;
+  shown = { cash: state.players.map(p => p.cash), seq: state.eventSeq, dice: [1, 1] };
+  freshAfter = state.eventSeq;
 
   app.innerHTML = `
   <div class="page game-page">
     <div class="screen">
-      <div class="frame map-wrap"><svg id="map"></svg></div>
+      <div class="frame map-wrap"><svg id="map"></svg><div id="banner"></div></div>
       <aside class="frame panel" id="panel"></aside>
     </div>
     <div id="overlay"></div>
@@ -81,24 +119,27 @@ function startGame(cls: ClassId) {
   </div>`;
 
   const svg = document.getElementById('map') as unknown as SVGSVGElement;
-  dyn = buildMap(svg, onNodeClick);
+  layers = buildMap(svg, onNodeClick);
+  tokens = new TokenLayer(layers.tokens, state.players);
   render();
-  pumpAI();
+  banner('YOUR TURN', SEAT_COLORS[HUMAN], `Round 1 · ${state.players[HUMAN].name} the ${CLASS_INFO[cls].label}`);
 }
 
 function onNodeClick(id: NodeId) {
-  if (!state || state.winner !== null) return;
-  if (state.pending) return; // decisions first
-  openModal(propertySheet(state, HUMAN, id, dispatch, closeModal));
+  if (!state || state.winner !== null || busy) return;
+  if (state.pending && actingPlayer(state) === HUMAN) return; // answer the open decision first
+  const refresh = () => propertySheet(state!, HUMAN, id, dispatch, closeModal);
+  modal = { el: refresh(), refresh };
+  render();
 }
 
 function openModal(el: HTMLElement | null) {
   if (!el) return;
-  userModal = el;
+  modal = { el };
   render();
 }
 function closeModal() {
-  userModal = null;
+  modal = null;
   render();
 }
 
@@ -109,30 +150,32 @@ function toast(msg: string) {
   setTimeout(() => { if (t.firstChild) t.innerHTML = ''; }, 2200);
 }
 
-function dispatch(a: Action) {
-  if (!state) return;
-  const err = applyAction(state, a);
-  if (err) { toast(err); return; }
-  userModal = null; // any successful action closes user modals
-  render();
-  pumpAI();
-}
-
 function render() {
-  if (!state || !dyn) return;
-  updateMap(dyn, state);
-  renderPanel(document.getElementById('panel')!, state, HUMAN);
+  if (!state || !layers || !tokens) return;
+  if (!busy) {
+    shown = { cash: state.players.map(p => p.cash), seq: state.eventSeq, dice: state.lastRoll ?? shown.dice };
+    tokens.place(state.players.map(p => p.pos), state.players.map(p => !p.bankrupt),
+      state.winner === null ? state.current : null);
+  }
+  updateMap(layers.dyn, state);
+  renderPanel(document.getElementById('panel')!, state, HUMAN, {
+    busy, cash: shown.cash, shownSeq: shown.seq, freshAfter, dice: shown.dice, speed,
+  });
   bindPanel();
 
   const overlay = document.getElementById('overlay')!;
   overlay.innerHTML = '';
+  if (busy) return;
   if (state.winner !== null) {
     overlay.appendChild(endScreen(state, HUMAN, showSetup));
     return;
   }
   const pend = pendingDialog(state, HUMAN, dispatch);
   if (pend) overlay.appendChild(pend);
-  else if (userModal) overlay.appendChild(userModal);
+  else if (modal) {
+    if (modal.refresh) modal.el = modal.refresh();
+    overlay.appendChild(modal.el);
+  }
 }
 
 function bindPanel() {
@@ -140,39 +183,225 @@ function bindPanel() {
     document.getElementById(id)?.addEventListener('click', fn);
   on('btn-roll', () => dispatch({ type: 'roll' }));
   on('btn-end', () => dispatch({ type: 'endTurn' }));
-  on('btn-trade', () => { if (state) openModal(tradeBuilder(state, HUMAN, dispatch, closeModal)); });
+  on('btn-speed', cycleSpeed);
+  on('btn-trade', () => { if (state && !busy) openModal(tradeBuilder(state, HUMAN, dispatch, closeModal)); });
   on('btn-ability', () => {
-    if (!state) return;
+    if (!state || busy) return;
     const el = abilityTargets(state, HUMAN, dispatch, closeModal);
     if (el) openModal(el);
   });
 }
 
+/* ---------------- performing actions ---------------- */
+
+interface Snapshot {
+  cash: number[];
+  pos: NodeId[];
+  alive: boolean[];
+  seq: number;
+  current: PlayerId;
+  season: GameState['season'];
+  dice: [number, number];
+  lands: Record<NodeId, { owner: PlayerId | null; ups: number; cursed: boolean; mortgaged: boolean }>;
+}
+
+function snapshot(s: GameState): Snapshot {
+  const lands: Snapshot['lands'] = {};
+  for (const [id, o] of Object.entries(s.ownership)) {
+    lands[id] = { owner: o.owner, ups: o.upgrades.length, cursed: o.cursed, mortgaged: o.mortgaged };
+  }
+  return {
+    cash: s.players.map(p => p.cash),
+    pos: s.players.map(p => p.pos),
+    alive: s.players.map(p => !p.bankrupt),
+    seq: s.eventSeq,
+    current: s.current,
+    season: s.season,
+    dice: shown.dice,
+    lands,
+  };
+}
+
+/** Apply an action and play out its consequences. Returns the engine's rejection, if any. */
+async function perform(action: Action): Promise<string | null> {
+  if (!state) return 'no game';
+  const before = snapshot(state);
+  const err = applyAction(state, action);
+  if (err) return err;
+  const notable = await present(before, action);
+  aiDelay = nextAiDelay(action, before, notable);
+  return null;
+}
+
+/** Animate the effects of the last action, then reveal the new state. Returns how many lands changed. */
+async function present(before: Snapshot, action: Action): Promise<number> {
+  const s = state!;
+  const gid = gameId;
+  busy = true;
+  shown = { cash: before.cash, seq: before.seq, dice: before.dice };
+  render();
+  tokens!.place(before.pos, before.alive, before.current);
+
+  const displayPos = [...before.pos];
+  for (const f of s.fx) {
+    if (gid !== gameId) return 0;
+    if (f.type === 'roll') {
+      await rollDice(f.dice);
+      shown.dice = f.dice;
+    } else {
+      displayPos[f.player] = f.path[f.path.length - 1];
+      const finalXY = TokenLayer.rest(displayPos, before.alive, f.player);
+      if (f.teleport) {
+        await tokens!.teleport(f.player, finalXY, speed);
+      } else {
+        await tokens!.walk(f.player, f.path, finalXY, speed, id => {
+          if (id === 'crossroads') floatAtNode(layers!.fx, id, `+${CROSSROADS_INCOME}g`, '#ffd97a');
+        });
+      }
+    }
+  }
+  if (gid !== gameId) return 0;
+
+  busy = false;
+  freshAfter = before.seq;
+  render();
+  const changed = pingChanges(before);
+  floatGold(before);
+  announceTurn(before, action);
+  return changed;
+}
+
+async function rollDice(final: [number, number]) {
+  const frames = 7;
+  for (let i = 0; i < frames; i++) {
+    const dice = document.querySelectorAll('.dice-row .die');
+    dice.forEach(d => {
+      d.classList.add('rolling');
+      setDieFace(d, 1 + Math.floor(Math.random() * 6));
+    });
+    await sleep(60 / speed);
+  }
+  document.querySelectorAll('.dice-row .die').forEach((d, i) => {
+    d.classList.remove('rolling');
+    setDieFace(d, final[i]);
+  });
+  await sleep(160 / speed);
+}
+
+function pingChanges(before: Snapshot): number {
+  const s = state!;
+  let changed = 0;
+  const ping = (id: NodeId, color: string, label: string) => {
+    pingNode(layers!.fx, id, color, label);
+    changed++;
+  };
+  for (const [id, o] of Object.entries(s.ownership)) {
+    const b = before.lands[id];
+    if (b.owner !== o.owner) {
+      if (o.owner === null) ping(id, '#9a917c', 'FREED');
+      else if (b.owner === null) ping(id, SEAT_COLORS[o.owner], 'CLAIMED');
+      else ping(id, SEAT_COLORS[o.owner], `TO ${s.players[o.owner].name.toUpperCase()}`);
+    } else if (o.upgrades.length > b.ups) ping(id, '#e8c96a', 'BUILT');
+    else if (o.upgrades.length < b.ups) ping(id, '#9a917c', 'RAZED');
+    else if (o.cursed && !b.cursed) ping(id, '#c9aef5', 'CURSED');
+    else if (!o.cursed && b.cursed) ping(id, '#8fd0a0', 'CLEANSED');
+    else if (o.mortgaged && !b.mortgaged) ping(id, '#9a917c', 'MORTGAGED');
+    else if (!o.mortgaged && b.mortgaged) ping(id, '#8fd0a0', 'REDEEMED');
+  }
+  s.players.forEach(p => {
+    if (p.bankrupt && before.alive[p.id]) ping(before.pos[p.id], '#e05038', 'RUINED');
+  });
+  return changed;
+}
+
+/** Rising "+150g" / "−72g" beside each player's gold that changed. */
+function floatGold(before: Snapshot) {
+  state!.players.forEach(p => {
+    const delta = p.cash - before.cash[p.id];
+    if (delta === 0) return;
+    const anchor = document.querySelector(`[data-gold="${p.id}"]`);
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const f = document.createElement('div');
+    f.className = `gold-float ${delta > 0 ? 'up' : 'down'}`;
+    f.textContent = `${delta > 0 ? '+' : '−'}${Math.abs(delta)}g`;
+    f.style.left = `${r.left + window.scrollX - 8}px`;
+    f.style.top = `${r.top + window.scrollY - 4}px`;
+    document.body.appendChild(f);
+    setTimeout(() => f.remove(), 1500);
+  });
+}
+
+function announceTurn(before: Snapshot, action: Action) {
+  const s = state!;
+  if (s.winner !== null) return;
+  const p = s.players[s.current];
+  const who = p.id === HUMAN ? 'YOUR TURN' : `${p.name.toUpperCase()}'S TURN`;
+  if (s.season !== before.season) {
+    const rise = s.season === 'autumn' ? '+25%' : '+50%';
+    banner(`${s.season.toUpperCase()} HAS COME`, '#f0b060', `All rents rise ${rise} · ${p.name}'s turn`);
+  } else if (s.current !== before.current) {
+    banner(who, SEAT_COLORS[p.id], `Round ${Math.min(s.round, 20)} · ${CLASS_INFO[p.cls].label}`);
+  } else if (action.type === 'endTurn' && s.phase === 'preroll') {
+    banner('DOUBLES!', SEAT_COLORS[p.id], `${p.id === HUMAN ? 'You roll' : p.name + ' rolls'} again`);
+  }
+}
+
+function banner(text: string, color: string, sub: string) {
+  const host = document.getElementById('banner');
+  if (!host) return;
+  const ms = BANNER_MS / speed;
+  host.innerHTML = `<div class="turn-banner" style="--bc:${color};animation-duration:${ms}ms">
+    <span>${esc(text)}</span><small>${esc(sub)}</small></div>`;
+  const el = host.firstElementChild;
+  setTimeout(() => { if (host.firstElementChild === el) host.innerHTML = ''; }, ms + 50);
+}
+const BANNER_MS = 1300;
+
+/** How long the AI waits before its next move, so notable moments get time to land. */
+function nextAiDelay(action: Action, before: Snapshot, notable: number): number {
+  const s = state!;
+  if (s.current !== before.current || s.season !== before.season) return BANNER_MS - 150;
+  if (notable > 0 || action.type === 'useAbility' || action.type === 'proposeTrade') return 950;
+  if (action.type === 'bid' || action.type === 'passBid') return 380;
+  if (action.type === 'roll' || action.type === 'chooseFork' || action.type === 'dungeonChoice') return 550;
+  return 380;
+}
+
+async function dispatch(a: Action) {
+  if (!state || busy) return;
+  const err = await perform(a);
+  if (err) { toast(err); return; }
+  modal = null;
+  render();
+  aiLoop();
+}
+
 /* ---------------- AI driver ---------------- */
 
-function pumpAI() {
-  if (!state || state.winner !== null) return;
-  if (actingPlayer(state) === HUMAN) return;
-  if (aiTimer) return;
-  aiTimer = window.setTimeout(() => {
-    aiTimer = null;
-    if (!state || state.winner !== null) { render(); return; }
-    if (actingPlayer(state) !== HUMAN) {
+async function aiLoop() {
+  if (aiRunning) return;
+  aiRunning = true;
+  const gid = gameId;
+  try {
+    while (state && gid === gameId && state.winner === null && actingPlayer(state) !== HUMAN) {
+      await sleep(aiDelay / speed);
+      if (!state || gid !== gameId || state.winner !== null || actingPlayer(state) === HUMAN) break;
       const action = decide(state, difficulty);
-      const err = applyAction(state, action);
+      const err = await perform(action);
       if (err) {
         console.error('AI action rejected', action, err);
         // fail-safe so a stuck AI never freezes the game
-        if (applyAction(state, { type: 'endTurn' }) && applyAction(state, { type: 'roll' })) {
+        if (await perform({ type: 'endTurn' }) && await perform({ type: 'roll' })) {
           toast('An AI faltered — see console.');
-          render();
-          return;
+          break;
         }
       }
-      render();
     }
-    pumpAI();
-  }, 420);
+  } finally {
+    aiRunning = false;
+  }
+  if (gid === gameId) render();
 }
 
 showSetup();

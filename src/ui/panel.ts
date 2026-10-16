@@ -24,14 +24,28 @@ function chips(state: GameState, pid: number): string {
   }).join('');
 }
 
-export function renderPanel(root: HTMLElement, state: GameState, human: number) {
+/** What the panel shows while an animation is still catching up with the engine. */
+export interface PanelView {
+  /** An animation is playing: every control is locked. */
+  busy: boolean;
+  /** Cash to display per seat (lags until the animation lands). */
+  cash: number[];
+  /** Only log events with id <= shownSeq are listed. */
+  shownSeq: number;
+  /** Events with id > freshAfter get the arrival highlight. */
+  freshAfter: number;
+  dice: [number, number];
+  speed: number;
+}
+
+export function renderPanel(root: HTMLElement, state: GameState, human: number, view: PanelView) {
   const seasonLabel = state.season === 'summer' ? 'SUMMER' : state.season === 'autumn' ? 'AUTUMN · RENTS +25%' : 'WINTER · RENTS +50%';
   const acting = actingPlayer(state);
   const me = state.players[human];
   const cls = CLASS_INFO[me.cls];
-  const myTurn = acting === human && state.winner === null;
-  const preroll = state.phase === 'preroll' && !state.pending && state.current === human;
-  const postroll = state.phase === 'postroll' && !state.pending && state.current === human;
+  const myTurn = acting === human && state.winner === null && !view.busy;
+  const preroll = myTurn && state.phase === 'preroll' && !state.pending && state.current === human;
+  const postroll = myTurn && state.phase === 'postroll' && !state.pending && state.current === human;
   const abilityReady = me.abilityCooldown === 0 && !me.actionUsed && !me.bankrupt;
   const abilityNote = me.cls === 'rogue' ? 'triggers when you pay rent'
     : me.abilityCooldown > 0 ? `ready in ${me.abilityCooldown} turn${me.abilityCooldown > 1 ? 's' : ''}`
@@ -44,6 +58,8 @@ export function renderPanel(root: HTMLElement, state: GameState, human: number) 
       p.sanctuary ? '✧' : '',
       p.writs > 0 ? '📜'.repeat(p.writs) : '',
     ].join('');
+    const cash = view.cash[p.id];
+    const worth = netWorth(state, p) - p.cash + cash;
     return `
     <div class="player ${active ? 'active' : ''} ${p.bankrupt ? 'dead' : ''}" style="--pc:${SEAT_COLORS[p.id]}">
       <div class="portrait">${esc(p.name[0])}</div>
@@ -52,16 +68,20 @@ export function renderPanel(root: HTMLElement, state: GameState, human: number) 
         <div class="pclass">${CLASS_INFO[p.cls].label}${p.id === human ? ' · you' : ''}${p.bankrupt ? ' · ruined' : ''}</div>
         <div class="chips">${p.bankrupt ? '' : chips(state, p.id)}</div>
       </div>
-      <div class="gold">${p.bankrupt ? '☠' : p.cash + 'g'}<small>${p.bankrupt ? '' : 'net ' + netWorth(state, p) + 'g'}</small></div>
+      <div class="gold" data-gold="${p.id}">${p.bankrupt ? '☠' : cash + 'g'}<small>${p.bankrupt ? '' : 'net ' + worth + 'g'}</small></div>
     </div>`;
   }).join('');
 
-  const [d1, d2] = state.lastRoll ?? [1, 1];
-  const waitNote = !myTurn && state.winner === null
+  const [d1, d2] = view.dice;
+  const waitNote = acting !== human && state.winner === null
     ? `<div class="wait-note">${esc(state.players[acting].name)} is scheming…</div>` : '';
+  const events = state.events.filter(e => e.id <= view.shownSeq).slice(-14).reverse();
 
   root.innerHTML = `
-    <h3>ROUND ${Math.min(state.round, 20)} of 20</h3>
+    <div class="panel-head">
+      <h3>ROUND ${Math.min(state.round, 20)} of 20</h3>
+      <button class="speed" id="btn-speed" title="Animation speed">${view.speed}×</button>
+    </div>
     ${players}
     <div class="dice-row">${die(d1)}${die(d2)}<span class="season">${seasonLabel}</span></div>
     <div class="btn-row">
@@ -77,7 +97,14 @@ export function renderPanel(root: HTMLElement, state: GameState, human: number) 
       </div>
     </div>
     ${waitNote}
-    <div class="log">${state.events.slice(-14).reverse().map(e =>
-      `<p><span class="lr">r${e.round}</span> ${esc(e.text)}</p>`).join('')}</div>
+    <div class="log">${events.map(e =>
+      `<p class="${e.id > view.freshAfter ? 'fresh' : ''}"><span class="lr">r${e.round}</span> ${esc(e.text)}</p>`).join('')}</div>
   `;
+}
+
+/** Set a rendered die's face in place (used by the roll animation). */
+export function setDieFace(dieEl: Element, v: number) {
+  dieEl.querySelectorAll<HTMLElement>('.pip').forEach((pip, i) => {
+    pip.style.visibility = PIPS[v].includes(i) ? 'visible' : 'hidden';
+  });
 }

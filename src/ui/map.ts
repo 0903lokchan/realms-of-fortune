@@ -72,7 +72,16 @@ const REGION_LABELS: Array<{ ids: [NodeId, NodeId]; label: string; push: number 
   { ids: ['high', 'citadel'], label: 'CELESTIAL REACH', push: 34 },
 ];
 
-export function buildMap(svg: SVGSVGElement, onNodeClick: (id: NodeId) => void): SVGGElement {
+export interface MapLayers {
+  /** Ownership rings, upgrades, mortgage and curse marks — redrawn per state. */
+  dyn: SVGGElement;
+  /** Persistent player tokens (see tokens.ts). */
+  tokens: SVGGElement;
+  /** Transient pings and floating text. */
+  fx: SVGGElement;
+}
+
+export function buildMap(svg: SVGSVGElement, onNodeClick: (id: NodeId) => void): MapLayers {
   svg.setAttribute('viewBox', '0 0 1120 830');
   svg.innerHTML = `
   <defs>
@@ -220,7 +229,35 @@ export function buildMap(svg: SVGSVGElement, onNodeClick: (id: NodeId) => void):
   el(svg, 'text', { x: 545, y: 472, class: 'mapsub', 'font-size': 12, 'text-anchor': 'middle', opacity: .85 }).textContent = '⟵ the Ironvein Pass ⟶';
   el(svg, 'text', { x: 1030, y: 326, class: 'mapsub', 'font-size': 12, 'text-anchor': 'middle', opacity: .85 }).textContent = 'the Underway';
 
-  return el(svg, 'g', { id: 'dyn' }) as SVGGElement;
+  return {
+    dyn: el(svg, 'g', { id: 'dyn' }) as SVGGElement,
+    tokens: el(svg, 'g', { id: 'tokens' }) as SVGGElement,
+    fx: el(svg, 'g', { id: 'fx', style: 'pointer-events:none' }) as SVGGElement,
+  };
+}
+
+/** Expanding ring plus a rising label over a node. */
+export function pingNode(fx: SVGGElement, id: NodeId, color: string, label: string) {
+  const p = POS[id];
+  const r = nodeRadius(id);
+  const ring = el(fx, 'circle', {
+    cx: p.x, cy: p.y, r: r + 4, fill: 'none', stroke: color, 'stroke-width': 3, class: 'ping-ring',
+  });
+  const text = el(fx, 'text', {
+    x: p.x, y: p.y - r - 22, 'text-anchor': 'middle', class: 'ping-label', fill: color,
+  });
+  text.textContent = label;
+  setTimeout(() => { ring.remove(); text.remove(); }, 1700);
+}
+
+/** Small rising text at a node (e.g. "+150g" as a token walks through the Crossroads). */
+export function floatAtNode(fx: SVGGElement, id: NodeId, text: string, color: string) {
+  const p = POS[id];
+  const t = el(fx, 'text', {
+    x: p.x, y: p.y - nodeRadius(id) - 8, 'text-anchor': 'middle', class: 'map-float', fill: color,
+  });
+  t.textContent = text;
+  setTimeout(() => t.remove(), 1400);
 }
 
 function state_clickable(id: NodeId): boolean {
@@ -262,30 +299,6 @@ export function updateMap(dyn: SVGGElement, state: GameState) {
       });
     }
   }
-  // tokens (stacked per node)
-  const byNode = new Map<NodeId, number[]>();
-  for (const pl of state.players) {
-    if (pl.bankrupt) continue;
-    if (!byNode.has(pl.pos)) byNode.set(pl.pos, []);
-    byNode.get(pl.pos)!.push(pl.id);
-  }
-  for (const [nid, ids] of byNode) {
-    const p = POS[nid];
-    const r = nodeRadius(nid);
-    ids.forEach((pid, j) => {
-      const tx = p.x + r * 0.85 + j * 9, ty = p.y + r * 0.85;
-      const active = pid === state.current && state.winner === null;
-      if (active) {
-        el(dyn, 'circle', { cx: tx, cy: ty, r: 12, fill: 'none', stroke: SEAT_COLORS[pid], 'stroke-width': 1.5, class: 'pulse' });
-      }
-      el(dyn, 'circle', { cx: tx, cy: ty, r: 8, fill: SEAT_COLORS[pid], stroke: '#f0e6cc', 'stroke-width': 1.6, filter: 'url(#glow)' });
-      const t = el(dyn, 'text', {
-        x: tx, y: ty + 3.2, 'text-anchor': 'middle', 'font-size': 8.5, 'font-weight': 700,
-        fill: '#fdf6e3', style: 'font-family:Cinzel,serif;pointer-events:none',
-      });
-      t.textContent = state.players[pid].name[0];
-    });
-  }
 }
 
-export { garrison, hasEnchant, own, settlementTiers };
+export { el, garrison, hasEnchant, own, settlementTiers, SEAT_COLORS };

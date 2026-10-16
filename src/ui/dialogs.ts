@@ -17,8 +17,9 @@ const ROUTE_FLAVOR: Record<string, { name: string; desc: string; tag: string; cl
   gull: { name: 'THE UNDERWAY', desc: 'A smugglers’ sea route. 50g ferry toll, but it dodges the King’s Levy.', tag: 'TOLL · SNEAKY', cls: 'risky' },
 };
 
-function dialog(title: string, sub: string, body: string): string {
-  return `<div class="dialog-backdrop"><div class="dialog">
+/** `docked` dialogs sit at the bottom over a light backdrop so the map stays readable. */
+function dialog(title: string, sub: string, body: string, docked = false): string {
+  return `<div class="dialog-backdrop ${docked ? 'docked' : ''}"><div class="dialog">
     <h2 class="dialog-h">${title}</h2>
     ${sub ? `<p class="dialog-sub">${sub}</p>` : ''}
     ${body}
@@ -42,7 +43,7 @@ export function pendingDialog(state: GameState, human: number, dispatch: Dispatc
       }).join('');
       wrap.innerHTML = dialog('A Fork in the Road',
         `${state.movement ? state.movement.remaining + ' steps yet to walk' : ''}`,
-        `<div class="routes">${routes}</div>`);
+        `<div class="routes">${routes}</div>`, true);
       wrap.querySelectorAll<HTMLElement>('.route').forEach(b =>
         b.addEventListener('click', () => dispatch({ type: 'chooseFork', to: b.dataset.to! })));
       return wrap;

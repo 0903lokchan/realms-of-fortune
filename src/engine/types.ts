@@ -112,9 +112,20 @@ export interface MovementState {
 export type Phase = 'preroll' | 'postroll' | 'gameover';
 
 export interface GameEvent {
+  /** Monotonic id (the log is trimmed, so array indexes are not stable). */
+  id: number;
   round: number;
   text: string;
 }
+
+/**
+ * Presentation effects produced by a single applyAction call, in order.
+ * Cleared at the start of every action; the engine never reads them back.
+ */
+export type Fx =
+  | { type: 'roll'; player: PlayerId; dice: [number, number] }
+  /** Walks list every node stepped through (path[0] is the start); teleports have two entries. */
+  | { type: 'move'; player: PlayerId; path: NodeId[]; teleport: boolean };
 
 export interface CompletedTrade {
   from: PlayerId;
@@ -150,6 +161,8 @@ export interface GameState {
   /** Current buyOrPass came from Ranger's Track (declining skips the auction). */
   rangerClaim: boolean;
   events: GameEvent[];
+  eventSeq: number;
+  fx: Fx[];
   winner: PlayerId | null;
 }
 

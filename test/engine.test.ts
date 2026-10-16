@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BOARD } from '../src/engine/board';
 import { _test, applyAction, createGame } from '../src/engine/engine';
 import type { Action, GameState } from '../src/engine/types';
 
@@ -196,6 +197,59 @@ describe('turn flow', () => {
     expect(s.players[0].cash).toBe(1200 - 150);
     expect(s.players[1].cash).toBe(1200 + 150);
     expect(s.lastTrade).not.toBeNull();
+  });
+
+  it('records a roll effect and a walk along real edges', () => {
+    const s = twoPlayer(3);
+    s.players[0].pos = 'rune'; // the next fork is 15 steps away, beyond any roll
+    ok(s, { type: 'roll' });
+    const roll = s.fx[0];
+    expect(roll.type).toBe('roll');
+    const walk = s.fx.find(f => f.type === 'move')!;
+    expect(walk.type === 'move' && !walk.teleport).toBe(true);
+    if (roll.type !== 'roll' || walk.type !== 'move') return;
+    expect(walk.path[0]).toBe('rune');
+    expect(walk.path.length).toBe(roll.dice[0] + roll.dice[1] + 1);
+    for (let i = 1; i < walk.path.length; i++) {
+      expect(BOARD.get(walk.path[i - 1])!.out).toContain(walk.path[i]);
+    }
+  });
+
+  it('splits a move at a fork and clears effects between actions', () => {
+    for (let seed = 500; seed < 560; seed++) {
+      const t = twoPlayer(seed);
+      t.players[0].pos = 'ferry';
+      ok(t, { type: 'roll' });
+      if (t.pending?.type !== 'fork') continue;
+      const first = t.fx.filter(f => f.type === 'move');
+      expect(first.length).toBe(1);
+      if (first[0].type === 'move') expect(first[0].path).toEqual(['ferry', 'quay']);
+      ok(t, { type: 'chooseFork', to: 'rockfall' });
+      expect(t.fx.some(f => f.type === 'roll')).toBe(false);
+      const second = t.fx.find(f => f.type === 'move')!;
+      if (second.type === 'move') expect(second.path.slice(0, 2)).toEqual(['quay', 'rockfall']);
+      return;
+    }
+    throw new Error('never hit the fork');
+  });
+
+  it('flags teleports such as leaving the Dungeon', () => {
+    const s = twoPlayer();
+    const p = s.players[0];
+    p.inDungeon = true;
+    p.pos = 'dungeon';
+    s.pending = { type: 'dungeon', player: 0 };
+    ok(s, { type: 'dungeonChoice', choice: 'bribe' });
+    expect(s.fx).toEqual([{ type: 'move', player: 0, path: ['dungeon', 'delve'], teleport: true }]);
+  });
+
+  it('gives log events unique increasing ids', () => {
+    const s = twoPlayer();
+    ok(s, { type: 'roll' });
+    const ids = s.events.map(e => e.id);
+    expect(ids.length).toBeGreaterThan(0);
+    for (let i = 1; i < ids.length; i++) expect(ids[i]).toBeGreaterThan(ids[i - 1]);
+    expect(s.eventSeq).toBe(ids[ids.length - 1]);
   });
 
   it('round cap crowns the richest player', () => {
